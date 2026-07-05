@@ -15,12 +15,14 @@ UI:
 
 import argparse
 import asyncio
+import collections
 import contextlib
 import datetime as dt
 import json
 import logging
 import os
 import pathlib
+import secrets
 import queue
 import re
 import threading
@@ -78,6 +80,37 @@ def ai_available() -> bool:
     return bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GROQ_API_KEY"))
 
 
+# -- security: LAN pairing token + rate limiting (ARCHITECTURE.md §7) ---------
+
+LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+TOKEN_COOKIE = "memoryos_token"
+RATE_LIMIT_PER_MIN = 240
+PAIRING_TOKEN: str | None = None   # None = auth disabled (tests); set in main()
+
+_rate_buckets: dict = collections.defaultdict(int)
+
+
+def get_or_create_pairing_token() -> str:
+    p = ROOT / "pairing_token.txt"
+    if not p.exists():
+        p.write_text(secrets.token_urlsafe(24), encoding="utf-8")
+    return p.read_text(encoding="utf-8").strip()
+
+
+def _request_token(request) -> str | None:
+    return (request.query_params.get("token")
+            or request.cookies.get(TOKEN_COOKIE)
+            or request.headers.get("x-memoryos-token"))
+
+
+def ws_authorized(ws: WebSocket) -> bool:
+    host = ws.client.host if ws.client else ""
+    if host in LOCAL_HOSTS or PAIRING_TOKEN is None:
+        return True
+    tok = ws.cookies.get(TOKEN_COOKIE) or ws.query_params.get("token") or ""
+    return secrets.compare_digest(tok, PAIRING_TOKEN)
+
+
 def load_vocab() -> str:
     if VOCAB_FILE.exists():
         with contextlib.suppress(Exception):
@@ -108,7 +141,40 @@ def chunk_to_wav_bytes(chunk: np.ndarray) -> bytes:
         w.writeframes((np.clip(chunk, -1.0, 1.0) * 32767).astype("<i2").tobytes())
     return buf.getvalue()
 
-app = FastAPI(title="Omi Transcriber")
+app = FastAPI(title="MemoryOS")
+
+
+@app.middleware("http")
+async def security_middleware(request, call_next):
+    host = request.client.host if request.client else ""
+    remote = host not in LOCAL_HOSTS
+    if remote and PAIRING_TOKEN is not None:
+        # rate limit before auth so brute force is throttled too
+        bucket = (host, int(time.time() // 60))
+        _rate_buckets[bucket] += 1
+        if _rate_buckets[bucket] > RATE_LIMIT_PER_MIN:
+            return JSONResponse({"detail": "rate limit exceeded"}, status_code=429)
+        if len(_rate_buckets) > 10000:
+            now = int(time.time() // 60)
+            for k in [k for k in _rate_buckets if k[1] < now - 2]:
+                del _rate_buckets[k]
+        if not secrets.compare_digest(_request_token(request) or "", PAIRING_TOKEN):
+            log.warning("rejected unpaired request from %s to %s",
+                        host, request.url.path)
+            return JSONResponse(
+                {"detail": "pairing token required — open the pairing link "
+                           "shown where the server was started"},
+                status_code=401)
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    # pairing by link: token in the URL becomes a long-lived cookie
+    if remote and PAIRING_TOKEN is not None \
+            and request.query_params.get("token") == PAIRING_TOKEN:
+        response.set_cookie(TOKEN_COOKIE, PAIRING_TOKEN, max_age=365 * 86400,
+                            httponly=True, samesite="lax")
+    return response
 
 
 class Session:
@@ -722,6 +788,23 @@ async def index():
     return FileResponse(ROOT / "static" / "index.html")
 
 
+@app.get("/manifest.json")
+async def manifest():
+    return FileResponse(ROOT / "static" / "manifest.json",
+                        media_type="application/manifest+json")
+
+
+@app.get("/icon.svg")
+async def icon():
+    return FileResponse(ROOT / "static" / "icon.svg", media_type="image/svg+xml")
+
+
+@app.get("/sw.js")
+async def service_worker():
+    return FileResponse(ROOT / "static" / "sw.js",
+                        media_type="application/javascript")
+
+
 @app.get("/status")
 async def status():
     return JSONResponse(hub.status_dict())
@@ -1041,6 +1124,9 @@ async def omi_disconnect():
 
 @app.websocket("/ws")
 async def ws_events(ws: WebSocket):
+    if not ws_authorized(ws):
+        await ws.close(code=4401)
+        return
     await ws.accept()
     hub.clients.add(ws)
     await ws.send_text(json.dumps(hub.status_dict()))
@@ -1056,6 +1142,9 @@ async def ws_events(ws: WebSocket):
 @app.websocket("/ws/audio")
 async def ws_audio(ws: WebSocket):
     """Browser audio input (any mic/headset): binary PCM16 mono 16kHz."""
+    if not ws_authorized(ws):
+        await ws.close(code=4401)
+        return
     await ws.accept()
     hub.source = "mic"
     hub.start_session()
@@ -1075,9 +1164,10 @@ async def ws_audio(ws: WebSocket):
 
 
 def main():
-    global hub, omi_link, polisher, memstore
+    global hub, omi_link, polisher, memstore, PAIRING_TOKEN
     setup_logging()
     load_env_file()
+    PAIRING_TOKEN = get_or_create_pairing_token()
     p = argparse.ArgumentParser()
     # 'small' keeps up with live speech on CPU; distil-large-v3/medium are more
     # accurate but slower than realtime on this class of laptop.
@@ -1104,17 +1194,23 @@ def main():
     polisher = Polisher(hub, on_polished=index_and_enrich)
     import uvicorn
 
+    from certs import local_ipv4s
+
     ssl_kwargs = {}
+    scheme = "http"
     if args.https:
-        from certs import ensure_cert, local_ipv4s
+        from certs import ensure_cert
 
         cert_path, key_path = ensure_cert()
         ssl_kwargs = {"ssl_certfile": str(cert_path), "ssl_keyfile": str(key_path)}
-        lan = [ip for ip in local_ipv4s() if ip != "127.0.0.1"]
-        print(f"HTTPS on: https://localhost:{args.port}" +
-              "".join(f"  https://{ip}:{args.port}" for ip in lan))
-        print("Phone: open the https:// address, accept the certificate "
-              "warning once, then Record works.")
+        scheme = "https"
+    lan = [ip for ip in local_ipv4s() if ip != "127.0.0.1"]
+    print(f"MemoryOS: {scheme}://localhost:{args.port}")
+    for ip in lan:
+        print(f"Phone/other devices (pairing link): "
+              f"{scheme}://{ip}:{args.port}/?token={PAIRING_TOKEN}")
+    if args.https:
+        print("Phone: accept the certificate warning once; then Record works.")
     uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="warning", **ssl_kwargs)
 
 

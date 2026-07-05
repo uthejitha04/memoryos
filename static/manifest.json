@@ -1,0 +1,15 @@
+{
+  "name": "MemoryOS",
+  "short_name": "MemoryOS",
+  "description": "Your second brain — remembers everything you hear, discuss, and promise.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0c12",
+  "theme_color": "#0a0c12",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
