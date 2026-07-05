@@ -1,0 +1,14 @@
+{
+  "name": "memoryos-desktop",
+  "productName": "MemoryOS",
+  "version": "0.3.0",
+  "description": "MemoryOS — your second brain",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

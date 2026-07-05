@@ -26,6 +26,7 @@ def _no_ai_keys_leak(monkeypatch):
     shell must never bleed into test behavior."""
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
 
 @pytest.fixture()

@@ -52,8 +52,15 @@ def gemini_key() -> str | None:
     return os.environ.get("GEMINI_API_KEY") or None
 
 
+def openrouter_key() -> str | None:
+    return os.environ.get("OPENROUTER_API_KEY") or None
+
+
+OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+
+
 def ai_available() -> bool:
-    return bool(gemini_key() or api_key())
+    return bool(gemini_key() or api_key() or openrouter_key())
 
 
 def _gemini_chat(content: str, key: str, json_mode: bool = False) -> str:
@@ -71,20 +78,37 @@ def _gemini_chat(content: str, key: str, json_mode: bool = False) -> str:
     return r.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 
+def _openrouter_chat(content: str, key: str, json_mode: bool = False) -> str:
+    import httpx
+
+    body = {
+        "model": OPENROUTER_MODEL,
+        "messages": [{"role": "user", "content": content}],
+        "temperature": 0.2,
+    }
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    r = httpx.post("https://openrouter.ai/api/v1/chat/completions",
+                   headers={"Authorization": f"Bearer {key}"},
+                   json=body, timeout=120)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
+
+
 def llm_chat(content: str, json_mode: bool = False) -> str:
-    """Provider chain: Gemini primary → Groq fallback. Raises RuntimeError
-    with the collected errors if every configured provider fails."""
+    """Provider chain: Gemini → Groq → OpenRouter. Raises RuntimeError with
+    the collected errors if every configured provider fails."""
     errors = []
-    if gemini_key():
+    for name, key_fn, chat_fn in (("gemini", gemini_key, _gemini_chat),
+                                  ("groq", api_key, _chat),
+                                  ("openrouter", openrouter_key, _openrouter_chat)):
+        key = key_fn()
+        if not key:
+            continue
         try:
-            return _gemini_chat(content, gemini_key(), json_mode)
+            return chat_fn(content, key, json_mode)
         except Exception as e:
-            errors.append(f"gemini: {e}")
-    if api_key():
-        try:
-            return _chat(content, api_key(), json_mode)
-        except Exception as e:
-            errors.append(f"groq: {e}")
+            errors.append(f"{name}: {e}")
     raise RuntimeError("; ".join(errors) or "no AI provider configured")
 
 

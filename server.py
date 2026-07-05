@@ -77,7 +77,8 @@ def load_env_file():
 
 
 def ai_available() -> bool:
-    return bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GROQ_API_KEY"))
+    return bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GROQ_API_KEY")
+                or os.environ.get("OPENROUTER_API_KEY"))
 
 
 # -- security: LAN pairing token + rate limiting (ARCHITECTURE.md §7) ---------

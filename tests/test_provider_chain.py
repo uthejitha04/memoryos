@@ -18,6 +18,7 @@ def groq_response(text):
 def no_env_keys(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
 
 def test_gemini_is_primary(monkeypatch):
@@ -89,6 +90,26 @@ def test_all_providers_failing_raises_with_details(monkeypatch):
     with pytest.raises(RuntimeError) as e:
         enrich.llm_chat("hello")
     assert "gemini" in str(e.value) and "groq" in str(e.value)
+
+
+def test_openrouter_is_last_resort(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "gem_k")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_k")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-k")
+    calls = []
+
+    def fake_post(url, headers=None, **kw):
+        calls.append(url)
+        if "openrouter.ai" in url:
+            assert headers["Authorization"] == "Bearer sk-or-k"
+            return httpx.Response(200, json=groq_response("openrouter saves the day"),
+                                  request=httpx.Request("POST", url))
+        return httpx.Response(500, json={}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    assert enrich.llm_chat("hello") == "openrouter saves the day"
+    assert len(calls) == 3  # gemini failed, groq failed, openrouter answered
+    assert "openrouter.ai" in calls[2]
 
 
 def test_no_keys_raises(monkeypatch):

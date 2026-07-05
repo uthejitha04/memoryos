@@ -103,6 +103,19 @@ Models (CPU, int8): `small` = fast + good (default sweet spot for live use),
 `distil-large-v3` / `large-v3` = best accuracy but slower, `tiny`/`base` = rough
 drafts. First use of a model downloads it to the HF cache.
 
+### Desktop app (Electron)
+
+```powershell
+MemoryOS.bat        # native window; starts the core automatically
+```
+First run: `cd desktop && npm install` (done during setup).
+
+### Cloud deploy (Stage B)
+
+The repo ships a `Dockerfile` + `railway.toml`. On Railway: New Project →
+Deploy from GitHub repo → set env vars from `.env` → it builds and serves
+`/status` as the healthcheck. Phone + laptop then share one public URL.
+
 ### CLI-only version
 
 `omi_transcribe.py` is a standalone script that does BLE -> Whisper -> console,
