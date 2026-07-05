@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+sessions/
+certs/
+memoryos.db*
+vocab.txt
+transcript_*.txt
+.pytest_cache/

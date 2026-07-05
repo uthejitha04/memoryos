@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MemoryOS</title>
+<style>
+/* ============ tokens (DESIGN_SYSTEM.md §2) ============ */
+:root {
+  --bg-base:#0a0c12; --glass:rgba(255,255,255,.055); --glass-strong:rgba(255,255,255,.09);
+  --stroke:rgba(255,255,255,.10); --text-hi:#f2f5fa; --text-mid:#a7b0bf; --text-low:#5d6675;
+  --accent:#6d9bff; --accent-soft:rgba(109,155,255,.18); --positive:#43d9a3;
+  --warning:#f5b054; --danger:#ff6b6b; --rec:#ff5d5d;
+  --spring:cubic-bezier(.32,.72,.28,1);
+}
+* { box-sizing:border-box; }
+html,body { margin:0; min-height:100%; }
+body {
+  background:var(--bg-base); color:var(--text-hi);
+  font:15px/1.5 -apple-system,"SF Pro Display","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+body::before, body::after {           /* aurora glows the glass refracts */
+  content:""; position:fixed; z-index:-1; border-radius:50%;
+  pointer-events:none; transform:translateZ(0);
+}
+body::before { width:70vw; height:70vw; top:-25vw; left:-20vw;
+  background:radial-gradient(circle, rgba(109,155,255,.16) 0%, transparent 70%); }
+body::after  { width:60vw; height:60vw; bottom:-20vw; right:-15vw;
+  background:radial-gradient(circle, rgba(168,120,255,.12) 0%, transparent 70%); }
+
+.wrap { max-width:760px; margin:0 auto; padding:24px 16px 110px; }
+h1 { font-size:28px; line-height:34px; letter-spacing:-.2px; margin:0; font-weight:650; }
+.caption { font-size:12px; line-height:16px; color:var(--text-mid); font-weight:500; }
+.mono { font-family:ui-monospace,"Cascadia Mono",Consolas,monospace; font-size:13px; line-height:20px; }
+
+/* ============ glass primitives ============ */
+.card {
+  background:var(--glass); border:1px solid var(--stroke); border-radius:20px;
+  backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%);
+  box-shadow:0 8px 32px rgba(0,0,0,.35); padding:18px; margin-bottom:14px;
+  transition:background .25s var(--spring), transform .25s var(--spring), border-color .25s var(--spring);
+}
+@supports not (backdrop-filter:blur(1px)) { .card { background:#141821; } }
+.card.tap { cursor:pointer; }
+.card.tap:hover { background:var(--glass-strong); transform:translateY(-1px); }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.grow { flex:1; min-width:0; }
+
+button, .btn {
+  font:inherit; font-size:14px; font-weight:550; color:var(--text-hi);
+  background:var(--glass-strong); border:1px solid var(--stroke); border-radius:14px;
+  padding:10px 16px; cursor:pointer; transition:transform .15s var(--spring), background .2s;
+  display:inline-flex; align-items:center; gap:7px; min-height:40px; text-decoration:none;
+}
+button:active { transform:scale(.97); }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+  outline:none; box-shadow:0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);
+}
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+button.danger  { background:var(--danger); border-color:var(--danger); color:#fff; }
+button:disabled { opacity:.45; cursor:default; }
+input, textarea, select {
+  font:inherit; font-size:14px; color:var(--text-hi); background:var(--glass);
+  border:1px solid var(--stroke); border-radius:14px; padding:11px 14px; min-height:40px;
+}
+.chip {
+  font-size:12px; font-weight:550; padding:4px 11px; border-radius:999px;
+  background:var(--accent-soft); color:var(--text-hi); display:inline-flex; align-items:center; gap:5px;
+  border:none;
+}
+.chip.dim { background:var(--glass-strong); color:var(--text-mid); }
+.pill { font-size:12px; padding:4px 11px; border-radius:999px; border:1px solid var(--stroke); color:var(--text-mid); white-space:nowrap; }
+.pill.ok { color:var(--positive); border-color:rgba(67,217,163,.4); }
+.pill.warn { color:var(--warning); border-color:rgba(245,176,84,.4); }
+.pill.rec { color:var(--rec); border-color:rgba(255,93,93,.45); font-weight:600; }
+.pill.rec::before { content:"●"; margin-right:5px; animation:blink 1.2s infinite; }
+@keyframes blink { 50% { opacity:.25; } }
+
+/* ============ floating nav ============ */
+nav {
+  position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:50;
+  display:flex; gap:4px; padding:6px; border-radius:999px;
+  background:rgba(20,24,33,.72); backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+  border:1px solid var(--stroke); box-shadow:0 12px 40px rgba(0,0,0,.5);
+}
+nav button {
+  background:none; border:none; border-radius:999px; padding:9px 18px; min-height:0;
+  color:var(--text-mid); font-weight:550;
+}
+nav button.on { background:var(--accent-soft); color:var(--text-hi); }
+
+/* ============ views & motion ============ */
+.view { animation:rise .25s var(--spring); }
+@keyframes rise { from { opacity:0; transform:translateY(8px); } }
+.line-in { animation:linein .35s var(--spring); }
+@keyframes linein { from { opacity:0; transform:translateY(12px); } }
+.hidden { display:none !important; }
+@media (prefers-reduced-motion:reduce) {
+  .view,.line-in { animation:none; }
+  .pill.rec::before { animation:none; }
+}
+
+/* ============ specific ============ */
+header.app { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+.logo { width:34px; height:34px; border-radius:11px; flex:none;
+  background:linear-gradient(135deg,#6d9bff,#a878ff); box-shadow:0 4px 18px rgba(109,155,255,.45); }
+#feed { display:flex; flex-direction:column; gap:10px; }
+.t-line .caption { margin-bottom:3px; }
+.empty { text-align:center; padding:52px 16px; color:var(--text-mid); }
+.empty .glyph { font-size:34px; margin-bottom:10px; filter:drop-shadow(0 0 18px var(--accent-soft)); }
+.empty .hint { color:var(--text-low); font-size:13px; margin-top:4px; }
+.skel { border-radius:20px; height:86px; margin-bottom:14px; border:1px solid var(--stroke);
+  background:linear-gradient(100deg,var(--glass) 40%,var(--glass-strong) 50%,var(--glass) 60%);
+  background-size:300% 100%; animation:shimmer 1.6s infinite linear; }
+@keyframes shimmer { to { background-position:-300% 0; } }
+.err {
+  background:rgba(255,107,107,.12); border:1px solid rgba(255,107,107,.35);
+  border-radius:14px; padding:12px 16px; margin-bottom:14px; font-size:14px;
+}
+#toast {
+  position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:60;
+  background:rgba(20,24,33,.85); backdrop-filter:blur(20px); border:1px solid var(--stroke);
+  border-radius:999px; padding:9px 18px; font-size:13px; transition:opacity .25s, transform .25s var(--spring);
+}
+#toast.off { opacity:0; transform:translate(-50%,-12px); pointer-events:none; }
+.title-line { font-size:17px; font-weight:600; line-height:24px; }
+.sum { color:var(--text-mid); font-size:13px; margin-top:3px;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.meta-row { margin-top:9px; }
+pre.transcript { white-space:pre-wrap; margin:0; }
+audio { width:100%; margin-top:12px; }
+#askInput { flex:1; font-size:16px; padding:14px 18px; border-radius:18px; }
+.cite { text-align:left; }
+.progressbar { height:3px; border-radius:2px; background:var(--glass-strong); overflow:hidden; margin-top:10px; }
+.progressbar > div { height:100%; width:0%; background:var(--accent); border-radius:2px;
+  box-shadow:0 0 10px var(--accent); transition:width .4s var(--spring); }
+.edit-title { background:none; border:none; color:var(--text-hi); font-size:17px; font-weight:600;
+  padding:2px 6px; border-radius:8px; width:100%; }
+@media (max-width:480px) { .wrap { padding:18px 14px 110px; } h1 { font-size:24px; } }
+</style>
+</head>
+<body>
+<div id="toast" class="off" role="status" aria-live="polite"></div>
+
+<div class="wrap">
+  <header class="app">
+    <div class="logo" aria-hidden="true"></div>
+    <div class="grow">
+      <h1>MemoryOS</h1>
+      <div class="caption" id="engineLine">starting…</div>
+    </div>
+    <span class="pill rec hidden" id="recPill">REC 0:00</span>
+  </header>
+
+  <!-- ================= LIVE ================= -->
+  <section id="view-live" class="view" aria-label="Live capture">
+    <div class="card">
+      <div class="row" style="margin-bottom:10px">
+        <button id="omiBtn" class="primary" aria-label="Connect Omi pendant">Connect Omi</button>
+        <span class="pill" id="omiPill">omi: disconnected</span>
+      </div>
+      <div class="row">
+        <select id="micSel" class="grow" aria-label="Audio input device"><option value="">Default microphone</option></select>
+        <button id="micBtn" aria-label="Start recording">● Record</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row tap" id="vocabHead" tabindex="0" role="button" aria-expanded="false"
+           style="justify-content:space-between;cursor:pointer">
+        <span class="caption">Vocabulary — names &amp; jargon it should know</span>
+        <span class="chip dim" id="vocabPill">0 terms</span>
+      </div>
+      <div id="vocabBody" class="hidden" style="margin-top:12px">
+        <textarea id="vocabText" rows="4" style="width:100%;resize:vertical"
+          placeholder="One term per line, e.g.&#10;Omi&#10;Naveen"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button id="vocabSave" class="primary">Save</button>
+          <span class="pill ok hidden" id="vocabSaved">saved</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="feed" aria-live="polite">
+      <div class="empty"><div class="glyph">🎙️</div>Ready to listen<div class="hint">Press Record, or connect your Omi.</div></div>
+    </div>
+  </section>
+
+  <!-- ================= MEMORIES ================= -->
+  <section id="view-memories" class="view hidden" aria-label="Memories">
+    <div id="mem-list">
+      <div class="row" style="margin-bottom:14px">
+        <input id="searchBox" class="grow" placeholder="Search your memories…" aria-label="Search memories">
+      </div>
+      <div class="row" id="statsRow" style="margin-bottom:14px"></div>
+      <div id="memCards"></div>
+    </div>
+
+    <div id="mem-detail" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <button id="backBtn" aria-label="Back to all memories">← Memories</button>
+          <span class="row">
+            <button id="polishBtn">✨ Polish</button>
+            <button id="summBtn" class="hidden">Summarize</button>
+            <button id="delBtn" class="danger" aria-label="Delete memory">Delete</button>
+          </span>
+        </div>
+        <input class="edit-title" id="detailTitle" aria-label="Memory title (click to edit)">
+        <div class="caption" id="detailMeta"></div>
+        <div class="row meta-row" id="detailChips"></div>
+        <div class="progressbar hidden" id="polishProg"><div></div></div>
+        <audio id="player" controls class="hidden"></audio>
+        <div class="row" style="margin-top:10px">
+          <a class="btn" id="dlTxt" download>⬇ transcript</a>
+          <a class="btn" id="dlWav" download>⬇ audio</a>
+          <a class="btn hidden" id="dlPolished" download>⬇ polished</a>
+        </div>
+      </div>
+      <div class="card">
+        <div class="caption" style="margin-bottom:10px">💬 Ask this memory</div>
+        <div id="memChat"></div>
+        <form class="row" id="memAskForm">
+          <input id="memAskInput" class="grow" placeholder="Ask about this recording…"
+                 aria-label="Ask about this recording" autocomplete="off">
+          <button class="primary" type="submit">Ask</button>
+        </form>
+      </div>
+      <div class="card hidden" id="actionsCard">
+        <div class="caption" style="margin-bottom:8px">Action items &amp; promises</div>
+        <div id="actionsList"></div>
+      </div>
+      <div class="card hidden" id="summaryCard">
+        <div class="caption" style="margin-bottom:8px">Summary</div>
+        <pre class="transcript mono" id="summaryText"></pre>
+      </div>
+      <div class="card hidden" id="polishedCard">
+        <div class="caption" style="margin-bottom:8px;color:var(--positive)">Polished transcript</div>
+        <pre class="transcript mono" id="polishedText"></pre>
+      </div>
+      <div class="card">
+        <div class="caption" style="margin-bottom:8px">Live transcript</div>
+        <pre class="transcript mono" id="sessText"></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ASK ================= -->
+  <section id="view-ask" class="view hidden" aria-label="Ask your memories">
+    <div class="card">
+      <form class="row" id="askForm">
+        <input id="askInput" placeholder="Ask your memories anything…" aria-label="Ask a question" autocomplete="off">
+        <button class="primary" type="submit" aria-label="Ask">Ask</button>
+      </form>
+      <div class="row" style="margin-top:12px" id="askIdeas"></div>
+    </div>
+    <div id="askResult"></div>
+  </section>
+</div>
+
+<nav aria-label="Main">
+  <button id="nav-live" class="on" aria-label="Live view">Live</button>
+  <button id="nav-memories" aria-label="Memories view">Memories</button>
+  <button id="nav-ask" aria-label="Ask view">Ask</button>
+</nav>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c => "&#" + c.charCodeAt(0) + ";");
+const state = { view:"live", status:{}, mem:null, recSecs:0, recTimer:null, micOn:false, omiOn:false };
+
+/* ---------------- toast ---------------- */
+let toastT;
+function toast(msg) {
+  const el = $("toast"); el.textContent = msg; el.classList.remove("off");
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.add("off"), 2500);
+}
+
+/* ---------------- api helper ---------------- */
+async function api(path, opts = {}, silent = false) {
+  try {
+    const r = await fetch(path, opts.body ? {
+      method: opts.method || "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(opts.body),
+    } : opts);
+    if (!r.ok) {
+      let d = ""; try { d = (await r.json()).detail; } catch {}
+      throw new Error(d || ("request failed (" + r.status + ")"));
+    }
+    const ct = r.headers.get("content-type") || "";
+    return ct.includes("json") ? r.json() : r.text();
+  } catch (e) {
+    if (!silent) toast(e.message);
+    throw e;
+  }
+}
+
+/* ---------------- navigation ---------------- */
+function show(view) {
+  state.view = view;
+  for (const v of ["live", "memories", "ask"]) {
+    $("view-" + v).classList.toggle("hidden", v !== view);
+    $("nav-" + v).classList.toggle("on", v === view);
+  }
+  if (view === "memories") { $("mem-detail").classList.add("hidden"); $("mem-list").classList.remove("hidden"); loadMemories(); }
+  if (view === "ask") setTimeout(() => $("askInput").focus(), 60);
+}
+["live", "memories", "ask"].forEach(v => $("nav-" + v).onclick = () => show(v));
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && state.view === "ask" && document.activeElement !== $("askInput")) { e.preventDefault(); $("askInput").focus(); }
+  if (e.key === "Escape" && state.view === "memories" && !$("mem-detail").classList.contains("hidden")) backToList();
+});
+
+/* ---------------- events websocket ---------------- */
+let ws;
+function connectWs() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === "status") applyStatus(m);
+    else if (m.type === "transcript") addLine(m);
+    else if (m.type === "polish") onPolishEvent(m);
+    else if (m.type === "memory") onMemoryEvent(m);
+  };
+  ws.onclose = () => setTimeout(connectWs, 1500);
+}
+setInterval(() => { if (ws && ws.readyState === 1) ws.send("ping"); }, 20000);
+
+function applyStatus(s) {
+  state.status = s;
+  const eng = s.live_engine === "groq" ? "Groq large-v3 live" : "Whisper " + s.model + " local";
+  $("engineLine").textContent = s.model_ready ? eng + " · " + (s.ai ? "AI online" : "offline mode") : "loading model…";
+  $("omiPill").textContent = "omi: " + s.omi;
+  $("omiPill").className = "pill " + (s.omi.startsWith("connected") ? "ok" : s.omi.includes("...") ? "warn" : "");
+  state.omiOn = s.omi.startsWith("connected") || s.omi.includes("...");
+  $("omiBtn").textContent = state.omiOn ? "Disconnect Omi" : "Connect Omi";
+  $("omiBtn").className = state.omiOn ? "danger" : "primary";
+  setRec(!!s.session, s.recorded_secs || 0);
+}
+
+function setRec(on, secs) {
+  $("recPill").classList.toggle("hidden", !on);
+  if (on) {
+    state.recSecs = Math.max(state.recSecs, secs);
+    if (!state.recTimer) state.recTimer = setInterval(() => {
+      state.recSecs++;
+      $("recPill").textContent = "REC " + Math.floor(state.recSecs / 60) + ":" + String(state.recSecs % 60).padStart(2, "0");
+    }, 1000);
+  } else { clearInterval(state.recTimer); state.recTimer = null; state.recSecs = 0; }
+}
+
+function addLine(m) {
+  document.querySelector("#feed .empty")?.remove();
+  const div = document.createElement("div");
+  div.className = "card line-in t-line";
+  div.innerHTML = `<div class="caption">${esc(m.time)} · ${m.secs}s · ${esc(m.engine || "local")}</div><div></div>`;
+  div.lastElementChild.textContent = m.text;
+  $("feed").appendChild(div);
+  if (state.view === "live") window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+}
+
+function onMemoryEvent(m) {
+  if (m.status === "indexed") toast("Memory indexed");
+  else if (m.status === "enriched") { toast(m.mode === "llm" ? "Memory enriched ✨" : "Memory saved"); if (state.view === "memories") loadMemories(); }
+}
+
+/* ---------------- omi + mic ---------------- */
+$("omiBtn").onclick = () => api(state.omiOn ? "/omi/disconnect" : "/omi/connect", { method: "POST" });
+
+async function refreshDevices() {
+  try {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const sel = $("micSel"), cur = sel.value;
+    sel.innerHTML = '<option value="">Default microphone</option>';
+    devs.filter(d => d.kind === "audioinput" && d.deviceId && d.deviceId !== "default").forEach((d, i) => {
+      const o = document.createElement("option");
+      o.value = d.deviceId; o.textContent = d.label || "Input device " + (i + 1);
+      sel.appendChild(o);
+    });
+    sel.value = cur;
+  } catch {}
+}
+navigator.mediaDevices?.addEventListener?.("devicechange", refreshDevices);
+refreshDevices();
+
+const workletCode = `class P extends AudioWorkletProcessor{constructor(){super();this.b=[];this.n=0}
+process(i){const c=i[0][0];if(!c)return true;this.b.push(new Float32Array(c));this.n+=c.length;
+if(this.n>=sampleRate/10){const a=new Float32Array(this.n);let o=0;for(const x of this.b){a.set(x,o);o+=x.length}
+this.port.postMessage(a,[a.buffer]);this.b=[];this.n=0}return true}}registerProcessor("p",P);`;
+
+function down16k(f32, rate) {
+  const ratio = rate / 16000, out = new Int16Array(Math.floor(f32.length / ratio));
+  for (let i = 0; i < out.length; i++) out[i] = Math.max(-1, Math.min(1, f32[Math.floor(i * ratio)])) * 32767;
+  return out;
+}
+
+let micWs, audioCtx, worklet, micStream;
+async function startMic() {
+  const deviceId = $("micSel").value;
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: {
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+    echoCancellation: true, noiseSuppression: true } });
+  refreshDevices();
+  audioCtx = new AudioContext();
+  await audioCtx.audioWorklet.addModule(URL.createObjectURL(new Blob([workletCode], { type: "application/javascript" })));
+  worklet = new AudioWorkletNode(audioCtx, "p");
+  audioCtx.createMediaStreamSource(micStream).connect(worklet);
+  micWs = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/audio");
+  micWs.binaryType = "arraybuffer";
+  worklet.port.onmessage = e => { if (micWs.readyState === 1) micWs.send(down16k(e.data, audioCtx.sampleRate).buffer); };
+  state.micOn = true;
+  $("micBtn").textContent = "■ Stop"; $("micBtn").className = "danger";
+  $("micBtn").setAttribute("aria-label", "Stop recording");
+}
+function stopMic() {
+  micWs?.close(); worklet?.disconnect(); audioCtx?.close();
+  micStream?.getTracks().forEach(t => t.stop());
+  state.micOn = false;
+  $("micBtn").textContent = "● Record"; $("micBtn").className = "";
+  $("micBtn").setAttribute("aria-label", "Start recording");
+}
+$("micBtn").onclick = () => state.micOn ? stopMic() : startMic().catch(e =>
+  toast("Microphone unavailable: " + e.message));
+
+/* ---------------- vocabulary ---------------- */
+async function loadVocab() {
+  const text = await api("/vocab", {}, true).catch(() => "");
+  $("vocabText").value = text;
+  const n = text.split("\n").filter(t => t.trim()).length;
+  $("vocabPill").textContent = n + " term" + (n === 1 ? "" : "s");
+}
+const toggleVocab = () => {
+  const open = $("vocabBody").classList.toggle("hidden");
+  $("vocabHead").setAttribute("aria-expanded", String(!open));
+};
+$("vocabHead").onclick = toggleVocab;
+$("vocabHead").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleVocab(); } };
+$("vocabSave").onclick = async () => {
+  const j = await api("/vocab", { method: "PUT", body: { text: $("vocabText").value } });
+  $("vocabPill").textContent = j.terms + " term" + (j.terms === 1 ? "" : "s");
+  $("vocabSaved").classList.remove("hidden");
+  setTimeout(() => $("vocabSaved").classList.add("hidden"), 1500);
+};
+loadVocab();
+
+/* ---------------- memories: timeline ---------------- */
+let searchT;
+$("searchBox").oninput = () => { clearTimeout(searchT); searchT = setTimeout(loadMemories, 250); };
+
+async function loadMemories() {
+  const box = $("memCards");
+  box.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  try {
+    const q = $("searchBox").value.trim();
+    const [sessions, enrichedArr, stats] = await Promise.all([
+      api("/sessions" + (q ? "?q=" + encodeURIComponent(q) : ""), {}, true),
+      api("/memory/recordings", {}, true).catch(() => []),
+      api("/memory/stats", {}, true).catch(() => null),
+    ]);
+    renderStats(stats);
+    const enriched = Object.fromEntries(enrichedArr.map(r => [r.name, r]));
+    box.innerHTML = "";
+    if (!sessions.length) {
+      box.innerHTML = `<div class="empty"><div class="glyph">🧠</div>${q ? "No memories match “" + esc(q) + "”" : "Nothing here yet"}<div class="hint">${q ? "Try different words — search is semantic in Ask." : "Record your first memory from the Live tab."}</div></div>`;
+      return;
+    }
+    for (const s of sessions) {
+      const m = enriched[s.name] || {};
+      const div = document.createElement("div");
+      div.className = "card tap line-in";
+      div.tabIndex = 0; div.setAttribute("role", "button");
+      const mins = Math.floor(s.secs / 60), secs = Math.round(s.secs % 60);
+      div.innerHTML = `
+        <div class="row" style="justify-content:space-between">
+          <div class="grow">
+            <div class="title-line">${s.pinned ? "📌 " : ""}${esc(m.title || s.title || s.date)}${s.active ? ' <span class="pill rec">live</span>' : ""}</div>
+            <div class="caption">${esc(s.date)} · ${mins}:${String(secs).padStart(2, "0")}${s.polished ? " · ✨ polished" : ""}</div>
+          </div>
+          <span class="row" style="gap:6px">
+            ${m.action_count ? `<span class="chip">☑ ${m.action_count}</span>` : ""}
+            ${m.category ? `<span class="chip dim">${esc(m.category)}</span>` : ""}
+            <button class="chip dim pin-btn" title="${s.pinned ? "Unpin" : "Pin"}"
+              aria-label="${s.pinned ? "Unpin memory" : "Pin memory"}"
+              style="cursor:pointer${s.pinned ? ";background:var(--accent-soft)" : ""}">📌</button>
+          </span>
+        </div>
+        ${m.summary || s.preview ? `<div class="sum">${esc(m.summary || s.preview)}</div>` : ""}`;
+      const open = () => openMemory(s, m);
+      div.onclick = open;
+      div.onkeydown = e => { if (e.key === "Enter") open(); };
+      div.querySelector(".pin-btn").onclick = async ev => {
+        ev.stopPropagation();
+        try {
+          await api("/sessions/" + s.name, { method: "PATCH", body: { pinned: !s.pinned } });
+          toast(s.pinned ? "Unpinned" : "Pinned 📌");
+          loadMemories();
+        } catch {}
+      };
+      box.appendChild(div);
+    }
+  } catch (e) {
+    box.innerHTML = `<div class="err">Couldn't load memories: ${esc(e.message)} <button onclick="loadMemories()" style="margin-left:8px">Retry</button></div>`;
+  }
+}
+
+function renderStats(st) {
+  const row = $("statsRow");
+  if (!st || !st.recordings) { row.innerHTML = ""; return; }
+  const hours = (st.total_secs / 3600).toFixed(st.total_secs > 3600 ? 1 : 2);
+  row.innerHTML =
+    `<span class="chip dim">${st.recordings} memories</span>` +
+    `<span class="chip dim">${hours}h captured</span>` +
+    (st.top_people.length ? `<span class="chip dim">👤 ${esc(st.top_people.slice(0, 3).join(", "))}</span>` : "") +
+    (st.top_topics.length ? `<span class="chip dim"># ${esc(st.top_topics.slice(0, 3).join(", "))}</span>` : "");
+}
+
+/* ---------------- memories: detail ---------------- */
+function backToList() { $("mem-detail").classList.add("hidden"); $("mem-list").classList.remove("hidden"); loadMemories(); }
+$("backBtn").onclick = backToList;
+
+async function openMemory(s, m) {
+  state.mem = { ...s, ...m };
+  $("mem-list").classList.add("hidden");
+  $("mem-detail").classList.remove("hidden");
+  $("detailTitle").value = m.title || s.title || s.date;
+  $("detailMeta").textContent = `${s.date} · ${Math.floor(s.secs / 60)}:${String(Math.round(s.secs % 60)).padStart(2, "0")}`;
+  $("dlTxt").href = `/sessions/${s.name}/text`;
+  $("dlWav").href = `/sessions/${s.name}/audio`;
+  $("dlWav").classList.toggle("hidden", !s.has_audio);
+  $("summBtn").classList.toggle("hidden", !state.status.ai);
+  $("polishBtn").classList.toggle("hidden", !!s.active || !s.has_audio);
+  $("polishBtn").disabled = !!s.polishing;
+  $("polishBtn").textContent = s.polishing ? "✨ Polishing…" : (s.polished ? "✨ Re-polish" : "✨ Polish");
+  $("polishProg").classList.toggle("hidden", !s.polishing);
+  resetDelete();
+  const player = $("player");
+  if (s.has_audio && !s.active) { player.src = `/sessions/${s.name}/audio`; player.classList.remove("hidden"); }
+  else player.classList.add("hidden");
+
+  const [text, chips] = await Promise.all([
+    api(`/sessions/${s.name}/text`, {}, true).catch(() => ""),
+    api(`/memory/entities?recording=${s.name}`, {}, true).catch(() => []),
+  ]);
+  $("sessText").textContent = text || "(no speech transcribed)";
+  renderEntities(chips);
+  $("memChat").innerHTML = "";
+  loadAux(s.name);
+}
+
+/* per-memory chat */
+$("memAskForm").onsubmit = e => { e.preventDefault(); memAsk(); };
+async function memAsk() {
+  const q = $("memAskInput").value.trim();
+  if (!q || !state.mem) return;
+  $("memAskInput").value = "";
+  const box = $("memChat");
+  const qEl = document.createElement("div");
+  qEl.className = "line-in";
+  qEl.style.cssText = "margin:0 0 8px auto;max-width:85%;background:var(--accent-soft);border-radius:16px 16px 4px 16px;padding:9px 14px;width:fit-content";
+  qEl.textContent = q;
+  box.appendChild(qEl);
+  const aEl = document.createElement("div");
+  aEl.className = "skel";
+  aEl.style.height = "48px";
+  box.appendChild(aEl);
+  try {
+    const r = await api("/ask", { body: { question: q, recording: state.mem.name } });
+    aEl.className = "line-in";
+    aEl.style.cssText = "margin:0 auto 12px 0;max-width:85%;background:var(--glass-strong);border-radius:16px 16px 16px 4px;padding:9px 14px;width:fit-content;white-space:pre-wrap";
+    aEl.textContent = r.answer;
+    if (r.citations?.length && r.mode !== "llm") {
+      for (const c of r.citations.slice(0, 3)) {
+        const cd = document.createElement("div");
+        cd.className = "caption";
+        cd.style.margin = "0 0 8px 4px";
+        cd.textContent = `@ ${c.stamp} — ${c.text.slice(0, 120)}`;
+        box.appendChild(cd);
+      }
+    }
+  } catch (e) {
+    aEl.className = "err";
+    aEl.style.height = "";
+    aEl.textContent = e.message;
+  }
+}
+
+function renderEntities(ents) {
+  const people = ents.filter(e => e.type === "person").map(e => e.value);
+  const topics = ents.filter(e => ["topic", "project"].includes(e.type)).map(e => e.value);
+  const actions = ents.filter(e => ["action", "promise", "deadline"].includes(e.type));
+  $("detailChips").innerHTML =
+    people.map(p => `<span class="chip">👤 ${esc(p)}</span>`).join("") +
+    topics.slice(0, 5).map(t => `<span class="chip dim"># ${esc(t)}</span>`).join("");
+  $("actionsCard").classList.toggle("hidden", !actions.length);
+  $("actionsList").innerHTML = actions.map(a =>
+    `<div style="padding:6px 0"><span class="chip ${a.type === "promise" ? "" : "dim"}" style="margin-right:8px">${esc(a.type)}</span>${esc(a.value)}</div>`).join("");
+}
+
+async function loadAux(name) {
+  const pol = await fetch(`/sessions/${name}/polished`);
+  $("polishedCard").classList.toggle("hidden", !pol.ok);
+  if (pol.ok) { $("polishedText").textContent = await pol.text(); $("dlPolished").href = `/sessions/${name}/polished`; $("dlPolished").classList.remove("hidden"); }
+  else $("dlPolished").classList.add("hidden");
+  const sum = await fetch(`/sessions/${name}/summary`);
+  $("summaryCard").classList.toggle("hidden", !sum.ok);
+  if (sum.ok) $("summaryText").textContent = await sum.text();
+}
+
+/* title inline edit */
+$("detailTitle").onkeydown = e => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") { e.target.value = state.mem.title || state.mem.date; e.target.blur(); } };
+$("detailTitle").onblur = async e => {
+  const title = e.target.value.trim();
+  if (!state.mem || title === (state.mem.title || "")) return;
+  await api(`/sessions/${state.mem.name}`, { method: "PATCH", body: { title } });
+  state.mem.title = title; toast("Title saved");
+};
+
+/* polish + summarize + delete */
+$("polishBtn").onclick = async () => {
+  const engine = state.status.groq ? "groq" : "local";
+  await api(`/sessions/${state.mem.name}/polish?engine=${engine}`, { method: "POST" });
+  $("polishBtn").disabled = true; $("polishBtn").textContent = "✨ Polishing…";
+  $("polishProg").classList.remove("hidden");
+};
+function onPolishEvent(m) {
+  if (!state.mem || m.session !== state.mem.name) return;
+  if (m.status === "running") {
+    $("polishProg").classList.remove("hidden");
+    $("polishProg").firstElementChild.style.width = Math.round((m.progress || 0) * 100) + "%";
+  } else {
+    $("polishProg").classList.add("hidden");
+    $("polishBtn").disabled = false;
+    if (m.status === "done") { $("polishBtn").textContent = "✨ Re-polish"; state.mem.polished = true; loadAux(state.mem.name); toast("Polished ✨"); }
+    else { $("polishBtn").textContent = "✨ Polish"; toast("Polish " + m.status); }
+  }
+}
+$("summBtn").onclick = async () => {
+  $("summBtn").disabled = true; $("summBtn").textContent = "Summarizing…";
+  try { await api(`/sessions/${state.mem.name}/summarize`, { method: "POST" }); loadAux(state.mem.name); }
+  finally { $("summBtn").disabled = false; $("summBtn").textContent = "Summarize"; }
+};
+let delArmed = false;
+function resetDelete() { delArmed = false; $("delBtn").textContent = "Delete"; }
+$("delBtn").onclick = async () => {
+  if (!delArmed) { delArmed = true; $("delBtn").textContent = "Really delete?"; setTimeout(resetDelete, 2500); return; }
+  await api(`/sessions/${state.mem.name}`, { method: "DELETE" });
+  toast("Memory deleted"); backToList();
+};
+
+/* ---------------- ask ---------------- */
+const IDEAS = ["What promises did I make?", "Summarize everything about pricing",
+               "What did we decide recently?", "What deadlines are coming up?"];
+$("askIdeas").innerHTML = IDEAS.map(i => `<button class="chip dim" type="button">${esc(i)}</button>`).join("");
+[...$("askIdeas").children].forEach((b, i) => b.onclick = () => { $("askInput").value = IDEAS[i]; doAsk(); });
+
+$("askForm").onsubmit = e => { e.preventDefault(); doAsk(); };
+async function doAsk() {
+  const q = $("askInput").value.trim();
+  if (!q) return;
+  const box = $("askResult");
+  box.innerHTML = '<div class="skel"></div><div class="skel" style="height:56px"></div>';
+  try {
+    const r = await api("/ask", { body: { question: q } });
+    const cites = (r.citations || []).map((c, i) => `
+      <button class="card tap cite" style="width:100%;margin-bottom:10px" data-i="${i}">
+        <div class="grow">
+          <div class="caption">[${i + 1}] ${esc(c.title)} · ${esc(c.stamp)}</div>
+          <div class="sum">${esc(c.text)}</div>
+        </div>
+      </button>`).join("");
+    box.innerHTML = `
+      <div class="card line-in">
+        <div class="caption" style="margin-bottom:8px">${r.mode === "llm" ? "Answer" : r.mode === "empty" ? "No memories found" : "From your memories"}</div>
+        <div style="white-space:pre-wrap">${esc(r.answer)}</div>
+      </div>
+      ${cites ? `<div class="caption" style="margin:4px 0 10px 4px">Sources</div>${cites}` : ""}`;
+    box.querySelectorAll(".cite").forEach(el => el.onclick = async () => {
+      const c = r.citations[+el.dataset.i];
+      const sessions = await api("/sessions", {}, true);
+      const s = sessions.find(x => x.name === c.recording);
+      if (s) { show("memories"); openMemory(s, { title: c.title }); }
+    });
+  } catch (e) {
+    box.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+connectWs();
+show("live");
+</script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+2026-07-05 13:26:36,412 INFO recovery: indexing session_20260703_190507 (2 segments)
+2026-07-05 13:26:52,593 INFO recovery: indexing session_20260704_043914 (2 segments)
+2026-07-05 13:27:03,591 INFO recovery: indexing session_20260705_083558 (117 segments)
