@@ -8,3 +8,5 @@ memoryos.db*
 vocab.txt
 transcript_*.txt
 .pytest_cache/
+node_modules/
+desktop/dist/
