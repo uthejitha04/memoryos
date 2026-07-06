@@ -92,6 +92,9 @@ _rate_buckets: dict = collections.defaultdict(int)
 
 
 def get_or_create_pairing_token() -> str:
+    env_token = os.environ.get("PAIRING_TOKEN")
+    if env_token:  # cloud deploys set it explicitly so it survives restarts
+        return env_token.strip()
     p = ROOT / "pairing_token.txt"
     if not p.exists():
         p.write_text(secrets.token_urlsafe(24), encoding="utf-8")
@@ -1173,7 +1176,8 @@ def main():
     # 'small' keeps up with live speech on CPU; distil-large-v3/medium are more
     # accurate but slower than realtime on this class of laptop.
     p.add_argument("--model", default="small")
-    p.add_argument("--port", type=int, default=8090)
+    # cloud hosts (Railway etc.) inject the port to bind via $PORT
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8090)))
     p.add_argument("--https", action="store_true",
                    help="serve TLS with a self-signed cert so phones can record")
     p.add_argument("--live-engine", choices=["auto", "local", "groq"], default="auto",

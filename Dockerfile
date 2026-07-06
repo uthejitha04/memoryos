@@ -13,7 +13,6 @@ RUN pip install --no-cache-dir -r requirements.txt sentence-transformers
 
 COPY . .
 
-ENV PORT=8090
 EXPOSE 8090
 
-CMD ["python", "server.py", "--port", "8090"]
+CMD ["python", "server.py"]
