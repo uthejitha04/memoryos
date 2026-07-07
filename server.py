@@ -302,6 +302,9 @@ class Hub:
                                             groq_api_key(), prompt), "groq"
             except Exception as e:
                 log.warning("groq live failed (%s); using local model", e)
+        if self._model is None:
+            log.warning("no local model and cloud STT failed; dropping chunk")
+            return "", "none"
         segments, _ = self._model.transcribe(
             chunk, vad_filter=True, beam_size=1,
             condition_on_previous_text=False,
@@ -309,14 +312,20 @@ class Hub:
         return " ".join(s.text.strip() for s in segments).strip(), "local"
 
     def _worker(self):
-        import os
+        if self.model_name == "none":
+            # cloud profile: Groq does all transcription; loading local whisper
+            # would OOM small containers
+            self._model = None
+            self.model_ready = True
+            self.notify_status()
+        else:
+            from faster_whisper import WhisperModel
 
-        from faster_whisper import WhisperModel
-
-        self._model = WhisperModel(self.model_name, device="cpu", compute_type="int8",
-                                   cpu_threads=max(4, (os.cpu_count() or 4) - 2))
-        self.model_ready = True
-        self.notify_status()
+            self._model = WhisperModel(
+                self.model_name, device="cpu", compute_type="int8",
+                cpu_threads=max(4, (os.cpu_count() or 4) - 2))
+            self.model_ready = True
+            self.notify_status()
         while True:
             item = self.chunks.get()
             if item is None:
@@ -1175,8 +1184,9 @@ def main():
     p = argparse.ArgumentParser()
     # 'small' keeps up with live speech on CPU; distil-large-v3/medium are more
     # accurate but slower than realtime on this class of laptop.
-    p.add_argument("--model", default="small")
+    # MEMORYOS_MODEL=none = cloud profile (Groq-only STT, no local models);
     # cloud hosts (Railway etc.) inject the port to bind via $PORT
+    p.add_argument("--model", default=os.environ.get("MEMORYOS_MODEL", "small"))
     p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8090)))
     p.add_argument("--https", action="store_true",
                    help="serve TLS with a self-signed cert so phones can record")

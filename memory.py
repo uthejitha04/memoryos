@@ -38,11 +38,10 @@ def default_embedder(texts: list[str]) -> np.ndarray:
 
 
 def embeddings_available() -> bool:
-    try:
-        import sentence_transformers  # noqa: F401
-        return True
-    except Exception:
-        return False
+    import importlib.util
+
+    # find_spec instead of import: checking must not pull torch into RAM
+    return importlib.util.find_spec("sentence_transformers") is not None
 
 
 class MemoryStore:
