@@ -79,6 +79,9 @@ conversation they've ever captured.
 | P6 | Installable phone app (PWA) | manifest + service worker; "Add to Home Screen" gives a full-screen app with icon. |
 | P7 | Electron desktop app | MemoryOS.exe — double-click launch, no terminal. |
 | P8 | Pinned conversations | User can pin/unpin memories (📌). Pinned appear first in the timeline. Hard cap of 10 pins; attempting an 11th returns a clear error. Stored in the meta sidecar so it works even without the memory engine. |
+| P9 | Durable cloud storage | All mutable data (sessions, memory DB, vocab, token) lives under `MEMORYOS_DATA` (default: app dir). Cloud mounts a Railway volume at `/data` so audio survives redeploys. |
+| P10 | Pairing UX | The app shell loads without auth (it contains no data); all APIs stay token-gated. Unpaired visitors get a glass pairing screen instead of raw 401s. After pairing, the token is scrubbed from the address bar and the clean URL works via cookie. |
+| P11 | One brain (device→cloud sync v1) | When a session ends (and again when polish completes), the laptop pushes its files to the cloud instance (`MEMORYOS_SYNC_URL` + token), which stores and indexes them. The cloud holds memories from all devices; Ask on the cloud sees everything. Offline-safe: push failures retry on next event; laptop keeps full local copies. |
 
 Deferred in Phase 2: analytics view, digests, audio import, light mode,
 Google **Tasks** export (Keep has no public consumer API — documented

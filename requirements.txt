@@ -3,6 +3,7 @@ bleak>=3.0
 fastapi>=0.115
 uvicorn[standard]>=0.34
 cryptography>=44
+python-multipart>=0.0.9
 
 # optional: speaker labels in polished transcripts (large install: torch)
 # resemblyzer>=0.1.4

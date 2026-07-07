@@ -149,6 +149,23 @@ audio { width:100%; margin-top:12px; }
 <body>
 <div id="toast" class="off" role="status" aria-live="polite"></div>
 
+<div id="pairScreen" class="hidden" style="position:fixed;inset:0;z-index:100;display:flex;
+     align-items:center;justify-content:center;background:var(--bg-base)">
+  <div class="card" style="max-width:360px;width:90%;text-align:center">
+    <div class="logo" style="margin:6px auto 14px" aria-hidden="true"></div>
+    <div class="title-line" style="margin-bottom:4px">Pair this device</div>
+    <div class="caption" style="margin-bottom:16px">Enter your pairing code — it's in the
+      link you were given, after <span class="mono">token=</span></div>
+    <form id="pairForm">
+      <input id="pairInput" style="width:100%;text-align:center" placeholder="pairing code"
+             autocomplete="off" aria-label="Pairing code">
+      <button class="primary" style="width:100%;margin-top:10px" type="submit">Pair</button>
+    </form>
+    <div class="caption hidden" id="pairErr" style="color:var(--danger);margin-top:10px">
+      That code didn't match — check it and try again.</div>
+  </div>
+</div>
+
 <div class="wrap">
   <header class="app">
     <div class="logo" aria-hidden="true"></div>
@@ -694,10 +711,29 @@ async function doAsk() {
   }
 }
 
-connectWs();
-show("live");
-if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost"))
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+/* ---------------- boot & pairing ---------------- */
+$("pairForm").onsubmit = async e => {
+  e.preventDefault();
+  const t = $("pairInput").value.trim();
+  if (!t) return;
+  const r = await fetch("/status?token=" + encodeURIComponent(t));
+  if (r.ok) location.reload();          // cookie is set now; clean URL works
+  else $("pairErr").classList.remove("hidden");
+};
+
+(async function boot() {
+  // the token in a pairing link becomes a cookie server-side; hide it from
+  // the address bar (and from shoulder-surfers / screenshots) right away
+  if (new URLSearchParams(location.search).has("token"))
+    history.replaceState(null, "", location.pathname);
+  let ok = true;
+  try { ok = (await fetch("/status")).status !== 401; } catch {}
+  if (!ok) { $("pairScreen").classList.remove("hidden"); $("pairInput").focus(); return; }
+  connectWs();
+  show("live");
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost"))
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+})();
 </script>
 </body>
 </html>

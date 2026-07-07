@@ -30,7 +30,8 @@ import time
 import wave
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import (FastAPI, File, Form, HTTPException, UploadFile, WebSocket,
+                     WebSocketDisconnect)
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
 from omi_transcribe import (
@@ -44,10 +45,13 @@ from omi_transcribe import (
 )
 
 ROOT = pathlib.Path(__file__).parent
-SESSIONS = ROOT / "sessions"
+# all mutable data lives here; cloud deploys point this at a mounted volume
+DATA = pathlib.Path(os.environ.get("MEMORYOS_DATA", str(ROOT)))
+DATA.mkdir(parents=True, exist_ok=True)
+SESSIONS = DATA / "sessions"
 SESSIONS.mkdir(exist_ok=True)
 SESSION_NAME_RE = re.compile(r"^session_\d{8}_\d{6}$")
-VOCAB_FILE = ROOT / "vocab.txt"
+VOCAB_FILE = DATA / "vocab.txt"
 
 log = logging.getLogger("memoryos")
 
@@ -55,7 +59,7 @@ log = logging.getLogger("memoryos")
 def setup_logging():
     from logging.handlers import RotatingFileHandler
 
-    handler = RotatingFileHandler(ROOT / "memoryos.log", maxBytes=2_000_000,
+    handler = RotatingFileHandler(DATA / "memoryos.log", maxBytes=2_000_000,
                                   backupCount=2, encoding="utf-8")
     handler.setFormatter(logging.Formatter(
         "%(asctime)s %(levelname)s %(message)s"))
@@ -84,6 +88,8 @@ def ai_available() -> bool:
 # -- security: LAN pairing token + rate limiting (ARCHITECTURE.md §7) ---------
 
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+# the app shell is static and holds no user data; every API stays gated
+PUBLIC_PATHS = {"/", "/health", "/manifest.json", "/icon.svg", "/sw.js"}
 TOKEN_COOKIE = "memoryos_token"
 RATE_LIMIT_PER_MIN = 240
 PAIRING_TOKEN: str | None = None   # None = auth disabled (tests); set in main()
@@ -95,7 +101,7 @@ def get_or_create_pairing_token() -> str:
     env_token = os.environ.get("PAIRING_TOKEN")
     if env_token:  # cloud deploys set it explicitly so it survives restarts
         return env_token.strip()
-    p = ROOT / "pairing_token.txt"
+    p = DATA / "pairing_token.txt"
     if not p.exists():
         p.write_text(secrets.token_urlsafe(24), encoding="utf-8")
     return p.read_text(encoding="utf-8").strip()
@@ -157,8 +163,9 @@ async def health():
 @app.middleware("http")
 async def security_middleware(request, call_next):
     host = request.client.host if request.client else ""
-    remote = host not in LOCAL_HOSTS and request.url.path != "/health"
-    if remote and PAIRING_TOKEN is not None:
+    remote = host not in LOCAL_HOSTS
+    gated = remote and request.url.path not in PUBLIC_PATHS
+    if gated and PAIRING_TOKEN is not None:
         # rate limit before auth so brute force is throttled too
         bucket = (host, int(time.time() // 60))
         _rate_buckets[bucket] += 1
@@ -791,6 +798,8 @@ def index_and_enrich(name: str, segments: list[dict]):
                             entities=result["entities"])
     hub.broadcast({"type": "memory", "session": name, "status": "enriched",
                    "mode": result["mode"]})
+    # one-brain: push to the cloud instance (no-op on the cloud itself)
+    threading.Thread(target=sync_push, args=(name,), daemon=True).start()
 
 
 @app.on_event("startup")
@@ -1034,6 +1043,76 @@ async def delete_session(name: str):
     return {"ok": True}
 
 
+# -- one-brain sync: devices push finished sessions to the cloud instance ----
+
+SYNC_EXTS = (".wav", ".txt", ".jsonl", ".polished.txt", ".meta.json", ".summary.md")
+
+
+def sync_push(name: str):
+    """Push one session's files to the cloud brain (no-op unless configured).
+    Runs in a background thread; failures are logged, never raised."""
+    url = os.environ.get("MEMORYOS_SYNC_URL", "").rstrip("/")
+    token = os.environ.get("MEMORYOS_SYNC_TOKEN", "")
+    if not url:
+        return
+    import httpx
+
+    paths = [SESSIONS / f"{name}{ext}" for ext in SYNC_EXTS]
+    paths = [p for p in paths if p.exists()]
+    if not paths:
+        return
+    handles = []
+    try:
+        files = []
+        for p in paths:
+            fh = open(p, "rb")
+            handles.append(fh)
+            files.append(("files", (p.name, fh, "application/octet-stream")))
+        r = httpx.post(f"{url}/sync/session", data={"name": name}, files=files,
+                       headers={"x-memoryos-token": token}, timeout=600)
+        r.raise_for_status()
+        log.info("synced %s to cloud (%d files)", name, len(files))
+        hub.broadcast({"type": "sync", "session": name, "status": "done"})
+    except Exception as e:
+        log.warning("sync failed for %s: %s", name, e)
+        hub.broadcast({"type": "sync", "session": name, "status": f"error: {e}"})
+    finally:
+        for fh in handles:
+            with contextlib.suppress(Exception):
+                fh.close()
+
+
+@app.post("/sync/session")
+async def sync_receive(name: str = Form(...), files: list[UploadFile] = File(...)):
+    """Receive a session from another device and index it into this brain."""
+    if not SESSION_NAME_RE.match(name):
+        raise HTTPException(400, "bad session name")
+    allowed = {f"{name}{ext}" for ext in SYNC_EXTS}
+    saved = []
+    for f in files:
+        if f.filename not in allowed:
+            raise HTTPException(400, f"unexpected file {f.filename!r}")
+        dest = SESSIONS / f.filename
+        with open(dest, "wb") as out:
+            while chunk := await f.read(1 << 20):
+                out.write(chunk)
+        saved.append(f.filename)
+    log.info("sync received %s (%s)", name, ", ".join(saved))
+
+    def index_it():
+        polished = SESSIONS / f"{name}.polished.txt"
+        source = polished if polished.exists() else SESSIONS / f"{name}.txt"
+        if source.exists():
+            segs = parse_polished_text(source.read_text(encoding="utf-8")) \
+                or live_transcript_segments(name)
+            if segs:
+                with contextlib.suppress(Exception):
+                    index_and_enrich(name, segs)
+
+    threading.Thread(target=index_it, daemon=True).start()
+    return {"ok": True, "saved": saved}
+
+
 # -- omi control --------------------------------------------------------------
 
 
@@ -1209,7 +1288,7 @@ def main():
     import memory as memory_mod
 
     if memory_mod.embeddings_available():
-        memstore = memory_mod.MemoryStore(ROOT / "memoryos.db")
+        memstore = memory_mod.MemoryStore(DATA / "memoryos.db")
     else:
         print("Memory engine disabled: pip install sentence-transformers")
     polisher = Polisher(hub, on_polished=index_and_enrich)
