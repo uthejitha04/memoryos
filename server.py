@@ -1072,10 +1072,12 @@ def sync_push(name: str):
                        headers={"x-memoryos-token": token}, timeout=600)
         r.raise_for_status()
         log.info("synced %s to cloud (%d files)", name, len(files))
-        hub.broadcast({"type": "sync", "session": name, "status": "done"})
+        if hub:
+            hub.broadcast({"type": "sync", "session": name, "status": "done"})
     except Exception as e:
         log.warning("sync failed for %s: %s", name, e)
-        hub.broadcast({"type": "sync", "session": name, "status": f"error: {e}"})
+        if hub:
+            hub.broadcast({"type": "sync", "session": name, "status": f"error: {e}"})
     finally:
         for fh in handles:
             with contextlib.suppress(Exception):
