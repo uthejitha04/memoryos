@@ -84,6 +84,14 @@ def test_security_headers_always_present(secured):
     run(go())
 
 
+def test_health_is_public_even_when_secured(secured):
+    async def go():
+        async with remote_client(secured) as c:
+            r = await c.get("/health")
+            assert r.status_code == 200 and r.json() == {"ok": True}
+    run(go())
+
+
 def test_token_file_created_once(stub_hub, tmp_path, monkeypatch):
     import server
 

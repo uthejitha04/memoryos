@@ -148,10 +148,16 @@ def chunk_to_wav_bytes(chunk: np.ndarray) -> bytes:
 app = FastAPI(title="MemoryOS")
 
 
+@app.get("/health")
+async def health():
+    """Unauthenticated liveness probe for cloud platforms. Reveals nothing."""
+    return {"ok": True}
+
+
 @app.middleware("http")
 async def security_middleware(request, call_next):
     host = request.client.host if request.client else ""
-    remote = host not in LOCAL_HOSTS
+    remote = host not in LOCAL_HOSTS and request.url.path != "/health"
     if remote and PAIRING_TOKEN is not None:
         # rate limit before auth so brute force is throttled too
         bucket = (host, int(time.time() // 60))
