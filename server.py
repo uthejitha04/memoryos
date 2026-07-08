@@ -89,7 +89,7 @@ def ai_available() -> bool:
 
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
 # the app shell is static and holds no user data; every API stays gated
-PUBLIC_PATHS = {"/", "/health", "/manifest.json", "/icon.svg", "/sw.js"}
+PUBLIC_PATHS = {"/", "/health", "/manifest.json", "/icon.svg", "/sw.js", "/app.apk"}
 TOKEN_COOKIE = "memoryos_token"
 RATE_LIMIT_PER_MIN = 240
 PAIRING_TOKEN: str | None = None   # None = auth disabled (tests); set in main()
@@ -831,6 +831,28 @@ async def icon():
 async def service_worker():
     return FileResponse(ROOT / "static" / "sw.js",
                         media_type="application/javascript")
+
+
+@app.get("/app.apk")
+async def download_apk():
+    """Public download of the Android app, if one has been uploaded."""
+    apk = DATA / "app.apk"
+    if not apk.exists():
+        raise HTTPException(404, "APK not uploaded yet")
+    return FileResponse(apk, media_type="application/vnd.android.package-archive",
+                        filename="MemoryOS.apk")
+
+
+@app.post("/admin/apk")
+async def upload_apk(file: UploadFile = File(...)):
+    """Token-gated APK upload (the middleware already requires the pairing
+    token for non-local clients)."""
+    dest = DATA / "app.apk"
+    with open(dest, "wb") as out:
+        while chunk := await file.read(1 << 20):
+            out.write(chunk)
+    log.info("apk uploaded (%d bytes)", dest.stat().st_size)
+    return {"ok": True, "bytes": dest.stat().st_size}
 
 
 @app.get("/status")
