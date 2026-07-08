@@ -445,8 +445,27 @@ function stopMic() {
   $("micBtn").textContent = "● Record"; $("micBtn").className = "";
   $("micBtn").setAttribute("aria-label", "Start recording");
 }
-$("micBtn").onclick = () => state.micOn ? stopMic() : startMic().catch(e =>
-  toast("Microphone unavailable: " + e.message));
+/* Inside the native Android app, record via the OS foreground service so it
+   survives the screen turning off. Transcripts still stream back over the
+   events websocket, so the live feed updates exactly the same. */
+function nativeSetBtn(on) {
+  state.micOn = on;
+  $("micBtn").textContent = on ? "■ Stop" : "● Record";
+  $("micBtn").className = on ? "danger" : "";
+  $("micBtn").setAttribute("aria-label", on ? "Stop recording" : "Start recording");
+}
+function toggleRecord() {
+  if (window.MemoryOSNative) {
+    if (state.micOn) { window.MemoryOSNative.stopRecording(); nativeSetBtn(false); }
+    else { window.MemoryOSNative.startRecording(); nativeSetBtn(true); toast("Recording — screen can be off"); }
+    return;
+  }
+  state.micOn ? stopMic() : startMic().catch(e => toast("Microphone unavailable: " + e.message));
+}
+$("micBtn").onclick = toggleRecord;
+// reflect native recording state on load (e.g. reopened while still recording)
+if (window.MemoryOSNative && window.MemoryOSNative.isRecording &&
+    window.MemoryOSNative.isRecording()) nativeSetBtn(true);
 
 /* ---------------- vocabulary ---------------- */
 async function loadVocab() {

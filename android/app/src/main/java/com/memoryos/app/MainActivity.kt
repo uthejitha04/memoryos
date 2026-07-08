@@ -2,88 +2,98 @@ package com.memoryos.app
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.text.InputType
-import android.view.Gravity
-import android.widget.Button
+import android.webkit.JavascriptInterface
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
 /**
- * MemoryOS capture client. Holds the server URL + pairing token, requests mic
- * permission, and starts/stops the foreground RecordingService that streams
- * audio to the cloud brain — continuing with the screen off.
+ * MemoryOS mobile app.
  *
- * No secrets are baked in: the pairing token is entered once on the device and
- * stored only in the app's private prefs.
+ * A full-screen WebView renders the entire MemoryOS UI from the cloud, so the
+ * app IS the web app. The page's own Record button calls the injected
+ * `MemoryOSNative` bridge, which runs a foreground microphone service — so
+ * recording continues with the screen off, the one thing a web page can't do.
+ * Transcripts stream back over the events websocket, so the live feed updates
+ * exactly as it does in the browser.
+ *
+ * The pairing token is entered once and stored only in private prefs.
  */
 class MainActivity : Activity() {
 
-    private lateinit var urlField: EditText
-    private lateinit var tokenField: EditText
-    private lateinit var toggle: Button
-    private lateinit var status: TextView
-
+    private lateinit var web: WebView
     private val prefs by lazy { getSharedPreferences("memoryos", Context.MODE_PRIVATE) }
+
+    /** Exposed to the web page as window.MemoryOSNative */
+    inner class Bridge(private val url: String, private val token: String) {
+        @JavascriptInterface
+        fun startRecording() {
+            val i = Intent(this@MainActivity, RecordingService::class.java)
+                .putExtra("url", url).putExtra("token", token)
+            ContextCompat.startForegroundService(this@MainActivity, i)
+        }
+
+        @JavascriptInterface
+        fun stopRecording() {
+            stopService(Intent(this@MainActivity, RecordingService::class.java))
+        }
+
+        @JavascriptInterface
+        fun isRecording(): Boolean = RecordingService.running
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val d = resources.displayMetrics.density
-        val pad = (24 * d).toInt()
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad, pad, pad)
-        }
-
-        val title = TextView(this).apply {
-            text = "MemoryOS"
-            textSize = 30f
-        }
-        val subtitle = TextView(this).apply {
-            text = "Records with the screen off and streams to your cloud brain."
-            textSize = 14f
-            setPadding(0, (8 * d).toInt(), 0, (24 * d).toInt())
-        }
-
-        urlField = EditText(this).apply {
-            hint = "Server URL (https://…)"
-            setText(prefs.getString("url", DEFAULT_URL))
-            inputType = InputType.TYPE_TEXT_VARIATION_URI
-            setSingleLine()
-        }
-        tokenField = EditText(this).apply {
-            hint = "Pairing token (from your MemoryOS link, after token=)"
-            setText(prefs.getString("token", ""))
-            setSingleLine()
-        }
-        toggle = Button(this).apply {
-            text = "Start recording"
-            setOnClickListener { onToggle() }
-        }
-        status = TextView(this).apply {
-            setPadding(0, (24 * d).toInt(), 0, 0)
-            gravity = Gravity.CENTER
-            textSize = 15f
-        }
-
-        root.addView(title)
-        root.addView(subtitle)
-        root.addView(urlField)
-        root.addView(tokenField)
-        root.addView(toggle)
-        root.addView(status)
-        setContentView(root)
-
         ensurePermissions()
-        refresh()
+        val token = prefs.getString("token", "").orEmpty()
+        if (token.isEmpty()) promptToken() else buildUi(token)
+    }
+
+    private fun buildUi(token: String) {
+        val url = prefs.getString("url", DEFAULT_URL)!!.trimEnd('/')
+        web = WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.mediaPlaybackRequiresUserGesture = false
+            addJavascriptInterface(Bridge(url, token), "MemoryOSNative")
+            webViewClient = WebViewClient()
+            webChromeClient = object : WebChromeClient() {
+                override fun onPermissionRequest(request: PermissionRequest) {
+                    request.grant(request.resources)  // allow mic use while screen is on
+                }
+            }
+        }
+        setContentView(web)
+        web.loadUrl("$url/?token=$token")
+    }
+
+    private fun promptToken() {
+        val input = EditText(this).apply { hint = "Pairing token" }
+        AlertDialog.Builder(this)
+            .setTitle("Pair MemoryOS")
+            .setMessage("Paste your pairing token — the part after token= in your MemoryOS link.")
+            .setView(input)
+            .setCancelable(false)
+            .setPositiveButton("Pair") { _, _ ->
+                val t = input.text.toString().trim()
+                if (t.isEmpty()) {
+                    promptToken()
+                } else {
+                    prefs.edit().putString("token", t).putString("url", DEFAULT_URL).apply()
+                    buildUi(t)
+                }
+            }
+            .show()
     }
 
     private fun ensurePermissions() {
@@ -95,38 +105,11 @@ class MainActivity : Activity() {
         if (ask.isNotEmpty()) ActivityCompat.requestPermissions(this, ask.toTypedArray(), 1)
     }
 
-    private fun onToggle() {
-        if (RecordingService.running) {
-            stopService(Intent(this, RecordingService::class.java))
-        } else {
-            val url = urlField.text.toString().trim()
-            val token = tokenField.text.toString().trim()
-            if (token.isEmpty()) {
-                status.text = "Enter your pairing token first."
-                return
-            }
-            prefs.edit().putString("url", url).putString("token", token).apply()
-            val i = Intent(this, RecordingService::class.java)
-                .putExtra("url", url)
-                .putExtra("token", token)
-            ContextCompat.startForegroundService(this, i)
-        }
-        toggle.postDelayed({ refresh() }, 400)
-    }
-
-    private fun refresh() {
-        val on = RecordingService.running
-        toggle.text = if (on) "Stop recording" else "Start recording"
-        status.text = if (on) "● Recording — you can lock your screen" else "Idle"
-    }
-
-    override fun onResume() {
-        super.onResume()
-        refresh()
+    override fun onBackPressed() {
+        if (::web.isInitialized && web.canGoBack()) web.goBack() else super.onBackPressed()
     }
 
     companion object {
-        // public server URL only; the pairing token is entered on-device
         const val DEFAULT_URL = "https://memoryos-production-bcd1.up.railway.app"
     }
 }
