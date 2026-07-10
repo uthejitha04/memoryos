@@ -6,9 +6,13 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.webkit.JavascriptInterface
+import org.json.JSONArray
+import org.json.JSONObject
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -37,9 +41,15 @@ class MainActivity : Activity() {
     /** Exposed to the web page as window.MemoryOSNative */
     inner class Bridge(private val url: String, private val token: String) {
         @JavascriptInterface
-        fun startRecording() {
+        fun startRecording() = start(-1)
+
+        @JavascriptInterface
+        fun startRecordingOn(deviceId: Int) = start(deviceId)
+
+        private fun start(deviceId: Int) {
             val i = Intent(this@MainActivity, RecordingService::class.java)
                 .putExtra("url", url).putExtra("token", token)
+                .putExtra("deviceId", deviceId)
             ContextCompat.startForegroundService(this@MainActivity, i)
         }
 
@@ -50,6 +60,28 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun isRecording(): Boolean = RecordingService.running
+
+        /** JSON list of real input devices so the web picker can switch mics. */
+        @JavascriptInterface
+        fun listInputs(): String {
+            val am = getSystemService(AudioManager::class.java)
+            val seen = HashSet<String>()
+            val arr = JSONArray()
+            for (d in am.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
+                val label = inputLabel(d)
+                if (!seen.add(label)) continue           // collapse duplicates
+                arr.put(JSONObject().put("id", d.id).put("label", label))
+            }
+            return arr.toString()
+        }
+    }
+
+    private fun inputLabel(d: AudioDeviceInfo): String = when (d.type) {
+        AudioDeviceInfo.TYPE_BUILTIN_MIC -> "Phone microphone"
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth: " + (d.productName ?: "headset")
+        AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Wired headset"
+        AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET -> "USB mic"
+        else -> (d.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Input") + ""
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

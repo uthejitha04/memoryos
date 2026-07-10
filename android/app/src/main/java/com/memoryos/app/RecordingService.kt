@@ -6,7 +6,9 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
@@ -35,12 +37,15 @@ class RecordingService : Service() {
     @Volatile private var recording = false
     private var ws: WebSocket? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var preferredDeviceId = -1     // -1 = system default
+    private var scoStarted = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val url = intent?.getStringExtra("url").orEmpty()
         val token = intent?.getStringExtra("token").orEmpty()
+        preferredDeviceId = intent?.getIntExtra("deviceId", -1) ?: -1
         startForegroundNotice()
         running = true
         startStreaming(url, token)
@@ -105,6 +110,7 @@ class RecordingService : Service() {
             Log.e("MemoryOS", "mic permission missing", e)
             return
         }
+        applyPreferredDevice(recorder)
         val buf = ByteArray(3200)  // 100 ms @ 16 kHz mono 16-bit
         recorder.startRecording()
         while (recording) {
@@ -115,12 +121,34 @@ class RecordingService : Service() {
         recorder.release()
     }
 
+    /** Route capture to the chosen input; Bluetooth mics need SCO turned on. */
+    private fun applyPreferredDevice(recorder: AudioRecord) {
+        if (preferredDeviceId < 0) return
+        val am = getSystemService(AudioManager::class.java)
+        val dev = am.getDevices(AudioManager.GET_DEVICES_INPUTS)
+            .firstOrNull { it.id == preferredDeviceId } ?: return
+        if (dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
+            am.mode = AudioManager.MODE_IN_COMMUNICATION
+            @Suppress("DEPRECATION") am.startBluetoothSco()
+            @Suppress("DEPRECATION") run { am.isBluetoothScoOn = true }
+            scoStarted = true
+        }
+        recorder.setPreferredDevice(dev)
+        Log.i("MemoryOS", "input -> ${dev.productName} (type ${dev.type})")
+    }
+
     override fun onDestroy() {
         recording = false
         running = false
         thread?.join(1000)
         ws?.close(1000, "stopped")
         wakeLock?.let { if (it.isHeld) it.release() }
+        if (scoStarted) {
+            val am = getSystemService(AudioManager::class.java)
+            @Suppress("DEPRECATION") am.stopBluetoothSco()
+            am.mode = AudioManager.MODE_NORMAL
+            scoStarted = false
+        }
         super.onDestroy()
     }
 

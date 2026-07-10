@@ -495,9 +495,23 @@ function omiDisconnect() {
 $("omiBtn").onclick = () => omi.on ? omiDisconnect() : omiConnect();
 
 async function refreshDevices() {
+  const sel = $("micSel"), cur = sel.value;
+  // Inside the native app, list real OS input devices (phone mic, Bluetooth,
+  // wired, USB) — the app can actually switch between them.
+  if (window.MemoryOSNative && window.MemoryOSNative.listInputs) {
+    try {
+      const list = JSON.parse(window.MemoryOSNative.listInputs());
+      sel.innerHTML = '<option value="">Default microphone</option>';
+      list.forEach(d => {
+        const o = document.createElement("option");
+        o.value = String(d.id); o.textContent = d.label; sel.appendChild(o);
+      });
+      sel.value = cur;
+      return;
+    } catch {}
+  }
   try {
     const devs = await navigator.mediaDevices.enumerateDevices();
-    const sel = $("micSel"), cur = sel.value;
     sel.innerHTML = '<option value="">Default microphone</option>';
     devs.filter(d => d.kind === "audioinput" && d.deviceId && d.deviceId !== "default").forEach((d, i) => {
       const o = document.createElement("option");
@@ -517,6 +531,9 @@ refreshDevices();
 let devicesRevealed = false;
 async function revealDevices() {
   if (devicesRevealed) return;
+  if (window.MemoryOSNative && window.MemoryOSNative.listInputs) {  // app already knows the devices
+    devicesRevealed = true; await refreshDevices(); return;
+  }
   try {
     const named = (await navigator.mediaDevices.enumerateDevices())
       .some(d => d.kind === "audioinput" && d.label);
@@ -578,8 +595,14 @@ function nativeSetBtn(on) {
 }
 function toggleRecord() {
   if (window.MemoryOSNative) {
-    if (state.micOn) { window.MemoryOSNative.stopRecording(); nativeSetBtn(false); }
-    else { window.MemoryOSNative.startRecording(); nativeSetBtn(true); toast("Recording — screen can be off"); }
+    if (state.micOn) {
+      window.MemoryOSNative.stopRecording(); nativeSetBtn(false);
+    } else {
+      const id = $("micSel").value;
+      if (id && window.MemoryOSNative.startRecordingOn) window.MemoryOSNative.startRecordingOn(parseInt(id));
+      else window.MemoryOSNative.startRecording();
+      nativeSetBtn(true); toast("Recording — screen can be off");
+    }
     return;
   }
   state.micOn ? stopMic() : startMic().catch(e => toast("Microphone unavailable: " + e.message));
