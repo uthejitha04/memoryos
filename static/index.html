@@ -510,6 +510,27 @@ async function refreshDevices() {
 navigator.mediaDevices?.addEventListener?.("devicechange", refreshDevices);
 refreshDevices();
 
+/* Device names stay hidden until mic permission is granted. When the user
+   opens the picker, grant a one-off permission so real names (incl. Bluetooth
+   headsets) appear. On phones the OS usually still exposes only "Default" and
+   routes to whatever's connected — that's a browser limitation, not a bug. */
+let devicesRevealed = false;
+async function revealDevices() {
+  if (devicesRevealed) return;
+  try {
+    const named = (await navigator.mediaDevices.enumerateDevices())
+      .some(d => d.kind === "audioinput" && d.label);
+    if (!named) {
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      s.getTracks().forEach(t => t.stop());
+    }
+    devicesRevealed = true;
+    await refreshDevices();
+  } catch { /* permission denied — keep Default */ }
+}
+$("micSel").addEventListener("focus", revealDevices);
+$("micSel").addEventListener("mousedown", revealDevices);
+
 const workletCode = `class P extends AudioWorkletProcessor{constructor(){super();this.b=[];this.n=0}
 process(i){const c=i[0][0];if(!c)return true;this.b.push(new Float32Array(c));this.n+=c.length;
 if(this.n>=sampleRate/10){const a=new Float32Array(this.n);let o=0;for(const x of this.b){a.set(x,o);o+=x.length}
