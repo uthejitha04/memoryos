@@ -356,11 +356,13 @@ function applyStatus(s) {
   state.status = s;
   const eng = s.live_engine === "groq" ? "Groq large-v3 live" : "Whisper " + s.model + " local";
   $("engineLine").textContent = s.model_ready ? eng + " · " + (s.ai ? "AI online" : "offline mode") : "loading model…";
-  $("omiPill").textContent = "omi: " + s.omi;
-  $("omiPill").className = "pill " + (s.omi.startsWith("connected") ? "ok" : s.omi.includes("...") ? "warn" : "");
-  state.omiOn = s.omi.startsWith("connected") || s.omi.includes("...");
-  $("omiBtn").textContent = state.omiOn ? "Disconnect Omi" : "Connect Omi";
-  $("omiBtn").className = state.omiOn ? "danger" : "primary";
+  if (!state.omiBt) {   // browser-Bluetooth Omi manages the button itself
+    $("omiPill").textContent = "omi: " + s.omi;
+    $("omiPill").className = "pill " + (s.omi.startsWith("connected") ? "ok" : s.omi.includes("...") ? "warn" : "");
+    state.omiOn = s.omi.startsWith("connected") || s.omi.includes("...");
+    $("omiBtn").textContent = state.omiOn ? "Disconnect Omi" : "Connect Omi";
+    $("omiBtn").className = state.omiOn ? "danger" : "primary";
+  }
   setRec(!!s.session, s.recorded_secs || 0);
 }
 
@@ -390,8 +392,107 @@ function onMemoryEvent(m) {
   else if (m.status === "enriched") { toast(m.mode === "llm" ? "Memory enriched ✨" : "Memory saved"); if (state.view === "memories") loadMemories(); }
 }
 
-/* ---------------- omi + mic ---------------- */
-$("omiBtn").onclick = () => api(state.omiOn ? "/omi/disconnect" : "/omi/connect", { method: "POST" });
+/* ---------------- omi (Web Bluetooth: this browser talks to the pendant) ----------------
+   The browser connects to the Omi directly, decodes its Opus audio, and streams
+   PCM to the brain — so it works from the web app anywhere, no server Bluetooth.
+   Chrome/Edge on Android + desktop. Not iPhone/Safari (Apple blocks Web BT). */
+const OMI_SVC = "19b10000-e8f2-537e-4f6c-d104768a1214";
+const OMI_AUDIO = "19b10001-e8f2-537e-4f6c-d104768a1214";
+const OMI_CODEC = "19b10002-e8f2-537e-4f6c-d104768a1214";
+const omi = { dev: null, ws: null, dec: null, buf: [], lastPkt: null, ts: 0, on: false };
+
+function omiSetBtn(on) {
+  state.omiBt = on;
+  $("omiPill").textContent = on ? "omi: connected" : "omi: disconnected";
+  $("omiPill").className = "pill " + (on ? "ok" : "");
+  $("omiBtn").textContent = on ? "Disconnect Omi" : "Connect Omi";
+  $("omiBtn").className = on ? "danger" : "primary";
+}
+
+function catBytes(arr) {
+  let n = 0; for (const a of arr) n += a.length;
+  const o = new Uint8Array(n); let p = 0;
+  for (const a of arr) { o.set(a, p); p += a.length; } return o;
+}
+
+function omiEmitOpus(bytes) {
+  if (!omi.dec || omi.dec.state === "closed") return;
+  try {
+    omi.dec.decode(new EncodedAudioChunk({ type: "key", timestamp: omi.ts, duration: 20000, data: bytes }));
+    omi.ts += 20000;
+  } catch (e) { /* skip a corrupt frame, keep the stream alive */ }
+}
+
+function omiOnPacket(dv, codec) {
+  if (dv.byteLength < 4) return;
+  const pkt = dv.getUint16(0, true);
+  const payload = new Uint8Array(dv.buffer.slice(dv.byteOffset + 3, dv.byteOffset + dv.byteLength));
+  if (codec === 0 || codec === 1) {           // raw PCM16 — forward as-is
+    if (omi.ws && omi.ws.readyState === 1) omi.ws.send(payload.buffer);
+    return;
+  }
+  if (omi.lastPkt !== null && pkt !== omi.lastPkt && omi.buf.length) {
+    omiEmitOpus(catBytes(omi.buf)); omi.buf = [];
+  }
+  omi.lastPkt = pkt; omi.buf.push(payload);
+}
+
+async function omiConnect() {
+  if (!navigator.bluetooth) {
+    toast("This browser can't do Bluetooth — use Chrome on Android or desktop (not iPhone).");
+    return;
+  }
+  let dev;
+  try {
+    dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [OMI_SVC] });
+  } catch (e) { return; }                      // user closed the picker
+  try {
+    $("omiPill").textContent = "omi: connecting…"; $("omiPill").className = "pill warn";
+    const gatt = await dev.gatt.connect();
+    const svc = await gatt.getPrimaryService(OMI_SVC);
+    const audio = await svc.getCharacteristic(OMI_AUDIO);
+    let codec = 20;
+    try { codec = (await (await svc.getCharacteristic(OMI_CODEC)).readValue()).getUint8(0); } catch {}
+
+    omi.ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/audio");
+    omi.ws.binaryType = "arraybuffer";
+    await new Promise((res, rej) => { omi.ws.onopen = res; omi.ws.onerror = () => rej(new Error("stream failed")); });
+
+    omi.buf = []; omi.lastPkt = null; omi.ts = 0;
+    if (codec === 20 || codec === 21) {
+      if (!("AudioDecoder" in window)) throw new Error("this browser lacks Opus decoding (use Chrome)");
+      omi.dec = new AudioDecoder({
+        output: (ad) => {
+          const n = ad.numberOfFrames, f = new Float32Array(n);
+          ad.copyTo(f, { planeIndex: 0, format: "f32-planar" }); ad.close();
+          const i16 = new Int16Array(n);
+          for (let i = 0; i < n; i++) i16[i] = Math.max(-1, Math.min(1, f[i])) * 32767;
+          if (omi.ws && omi.ws.readyState === 1) omi.ws.send(i16.buffer);
+        },
+        error: (e) => console.error("opus decode", e),
+      });
+      omi.dec.configure({ codec: "opus", sampleRate: 16000, numberOfChannels: 1 });
+    }
+    audio.addEventListener("characteristicvaluechanged", (ev) => omiOnPacket(ev.target.value, codec));
+    await audio.startNotifications();
+    dev.addEventListener("gattserverdisconnected", omiDisconnect);
+    omi.dev = dev; omi.on = true; omiSetBtn(true);
+    toast("Omi connected 🎙️ — recording");
+  } catch (e) {
+    toast("Omi failed: " + (e.message || e));
+    try { dev.gatt.disconnect(); } catch {}
+    omiSetBtn(false); $("omiPill").className = "pill";
+  }
+}
+
+function omiDisconnect() {
+  try { if (omi.dev && omi.dev.gatt.connected) omi.dev.gatt.disconnect(); } catch {}
+  try { omi.ws && omi.ws.close(); } catch {}
+  try { if (omi.dec && omi.dec.state !== "closed") omi.dec.close(); } catch {}
+  omi.on = false; omi.dev = null; omiSetBtn(false);
+}
+
+$("omiBtn").onclick = () => omi.on ? omiDisconnect() : omiConnect();
 
 async function refreshDevices() {
   try {
