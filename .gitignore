@@ -10,3 +10,8 @@ transcript_*.txt
 .pytest_cache/
 node_modules/
 desktop/dist/
+android/.gradle/
+android/app/build/
+android/local.properties
+app.apk
+*.apk
