@@ -354,7 +354,7 @@ setInterval(() => { if (ws && ws.readyState === 1) ws.send("ping"); }, 20000);
 
 function applyStatus(s) {
   state.status = s;
-  const eng = s.live_engine === "groq" ? "Groq large-v3 live" : "Whisper " + s.model + " local";
+  const eng = s.live_engine === "groq" ? "Groq myself-v3 live" : "Whisper " + s.model + " local";
   $("engineLine").textContent = s.model_ready ? eng + " · " + (s.ai ? "AI online" : "offline mode") : "loading model…";
   if (!state.omiBt) {   // browser-Bluetooth Omi manages the button itself
     $("omiPill").textContent = "omi: " + s.omi;
