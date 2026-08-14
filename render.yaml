@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: memoryos
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: MEMORYOS_MODEL
+        value: none
+      - key: PORT
+        value: 8090
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: POSTHOG_API_KEY
+        sync: false
+      - key: MEMORYOS_SYNC_TOKEN
+        sync: false
