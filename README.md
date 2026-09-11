@@ -34,10 +34,30 @@ laptop mic --------> ┘                                       └--> sessions/*
 
 ### Setup
 
+The laptop app now uses the Python Bluetooth client when opened on localhost,
+including inside Electron. Turn on Windows Bluetooth, charge the pendant, and
+disconnect it from the official Omi app before choosing **Connect Omi**.
+Only one capture source can record at a time. If the pendant drops out, received
+audio remains in its WAV file and the client attempts to reconnect up to five
+times; the status explicitly identifies the recording gap. Audio generated
+while the pendant is disconnected is not recovered from device storage.
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 ```
+
+The requirements include the local memory engine. Prepare the models while
+online once, then use transcription and memory retrieval offline:
+
+```powershell
+.venv\Scripts\python -c "from memory import default_embedder; default_embedder(['setup'])"
+.venv\Scripts\python -c "from faster_whisper import WhisperModel; WhisperModel('small'); WhisperModel('distil-large-v3')"
+```
+
+Without an AI provider key, Ask returns relevant saved excerpts with citations;
+it does not generate new answers or AI summaries. The embedding, live, and
+polish models were installed and tested on this computer during the repair.
 
 ### Run
 
@@ -130,8 +150,10 @@ no server:
 
 - Audio service `19b10000-e8f2-537e-4f6c-d104768a1214`
 - Audio characteristic `19b10001-...` (notify): each notification is
-  `[packet_id u16 LE][frame_index u8][opus fragment]`; fragments sharing a
-  packet_id are reassembled into one Opus frame.
+  `[packet_id u16 LE][frame_index u8][audio fragment]`; the packet counter
+  increments for every notification, while index zero starts a new frame.
+  Duplicate notifications are ignored; gaps discard the partial frame until
+  the next frame start. The final unconfirmed frame is discarded on disconnect.
 - Codec characteristic `19b10002-...` (read): 0/1 = PCM16 16k/8k, 20/21 = Opus 16k.
 
 ## Roadmap
@@ -139,3 +161,14 @@ no server:
 - Phase 3: HTTPS (self-signed) so the phone browser can stream its mic;
   optional Groq free-tier Whisper large-v3 for cloud-quality accuracy;
   speaker diarization; summaries.
+
+<!-- repository-guide:start -->
+## Repository guide
+
+- [Agent instructions](AGENTS.md)
+- [Founder mission](FOUNDER.md)
+- [Current status and session history](LOG.md)
+- [Architecture](ARCHITECTURE.md)
+- [Roadmap](ROADMAP.md)
+- [Setup and verification](DEVELOPMENT.md)
+<!-- repository-guide:end -->

@@ -15,3 +15,10 @@ android/app/build/
 android/local.properties
 app.apk
 *.apk
+
+# Repository local configuration
+.env
+.env.*
+!.env.example
+!.env.*.example
+pairing_token.txt
