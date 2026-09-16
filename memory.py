@@ -289,5 +289,5 @@ class MemoryStore:
                 "top_people": top_people, "top_topics": top_topics}
 
     def close(self):
-        with contextlib.suppress(Exception):
+        with self._lock, contextlib.suppress(Exception):
             self._db.close()

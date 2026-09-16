@@ -22,3 +22,7 @@ app.apk
 !.env.example
 !.env.*.example
 pairing_token.txt
+
+# Private runtime output
+*.log
+pytest-cache-files-*/

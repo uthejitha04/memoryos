@@ -59,6 +59,12 @@ Without an AI provider key, Ask returns relevant saved excerpts with citations;
 it does not generate new answers or AI summaries. The embedding, live, and
 polish models were installed and tested on this computer during the repair.
 
+### Verified capture and citations
+
+The isolated recording-to-Ask flow was verified on 2026-09-15 using synthetic speech and the real local Whisper and MiniLM models. New live recordings preserve audio offsets, so citations can seek to the retrieved chunk without waiting for polishing. Recovery and reindexing preserve those offsets. Older transcripts without offsets still fall back to the beginning until polished.
+
+The user verified physical Omi speech capture and connection retention after stopping. All-day mobile capture and interruption recovery remain unverified. See [Development](DEVELOPMENT.md) for the reproducible checks and their limits.
+
 ### Run
 
 ```powershell
@@ -68,10 +74,10 @@ start.bat                                 # or: .venv\Scripts\python server.py
 Opens http://localhost:8090. In the app:
 
 - **Live tab**
-  - **Connect Omi** — scans for the pendant and streams its audio.
+  - **Connect Omi** — connects the pendant without recording. Then press **Start recording**.
     (First disconnect it from the Omi phone app — BLE allows one connection
     at a time. Pendant must be charged and nearby.)
-  - **Device picker + 🎙️ Record** — use any input: built-in mic, headset,
+  - **Device picker + Record microphone** — use any input: built-in mic, headset,
     USB/Bluetooth mic. Device names appear after the first recording grants
     mic permission.
   - A red **REC** timer shows while a session is recording.
@@ -172,3 +178,11 @@ no server:
 - [Roadmap](ROADMAP.md)
 - [Setup and verification](DEVELOPMENT.md)
 <!-- repository-guide:end -->
+
+### Live recording controls
+
+**Connect Omi** connects the pendant without recording. **Start recording** captures Omi audio; **Stop recording** saves the session and leaves Bluetooth connected. **Disconnect Omi** explicitly closes the connection (and stops any active Omi recording). Idle audio is discarded, and a new recording starts a fresh session. Connection loss stops recording; after reconnection, press Start recording again.
+
+Omi is the primary source. Computer/phone microphone controls are under **Use a computer or phone microphone instead**; only one source can record at a time. Live transcripts arrive after roughly 6–20 seconds of audio plus processing time. Captions distinguish audio duration from processing time, which excludes queue wait.
+
+After updating this version, restart the Python server and refresh the page: the separate recording controls require the new backend endpoints.

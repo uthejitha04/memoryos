@@ -6,7 +6,7 @@
 <title>MemoryOS</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<meta name="theme-color" content="#0a0c12">
+<meta name="theme-color" content="#183b2e">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
@@ -144,6 +144,37 @@ audio { width:100%; margin-top:12px; }
 .edit-title { background:none; border:none; color:var(--text-hi); font-size:17px; font-weight:600;
   padding:2px 6px; border-radius:8px; width:100%; }
 @media (max-width:480px) { .wrap { padding:18px 14px 110px; } h1 { font-size:24px; } }
+
+/* MemoryOS — quiet workspace */
+:root{--bg-base:#f5f4ef;--glass:#fffefa;--glass-strong:#eeeee6;--stroke:#dddfd4;--text-hi:#20372c;--text-mid:#58675d;--text-low:#657368;--accent:#285c43;--accent-soft:#e0eada;--positive:#286747;--warning:#936016;--danger:#a33c34;--rec:#a33c34}
+body{font-family:"Trebuchet MS","Segoe UI",sans-serif;background:var(--bg-base)}
+body::before,body::after{display:none}
+.wrap{max-width:1240px;margin:0 0 0 236px;padding:36px 5vw 70px}
+header.app{border-bottom:1px solid var(--stroke);padding-bottom:25px;margin-bottom:40px}
+header.app h1{font-size:17px;letter-spacing:-.5px}header.app .logo{display:none}
+.logo{background:#b9d0a6;box-shadow:none;border-radius:50%}
+.card{backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;border-radius:16px;padding:24px;margin-bottom:18px;background:var(--glass)}
+.card.tap:hover{background:#f0f3e9;border-color:#aabb9e}
+button,.btn,input,textarea,select{border-radius:9px;min-height:44px}button,.btn{font-weight:600}
+button.primary{background:#285c43;border-color:#285c43}button:hover:not(:disabled){filter:brightness(.94)}
+button.danger{background:#f6e9e3;border-color:#e8c9bd;color:#923d30}
+select option{background:#fffefa;color:#20372c}
+.pill{white-space:normal;background:#f4f5ed}.pill.ok{background:#edf4e6;border-color:#c4d6b4}
+nav{left:0;top:0;bottom:0;transform:none;width:236px;border:0;border-radius:0;background:#183b2e;padding:36px 20px;display:flex;flex-direction:column;gap:8px;box-shadow:none;backdrop-filter:none}
+nav::before{content:'m / MemoryOS';font-size:23px;color:#f4f5e9;font-family:Georgia,serif;letter-spacing:-1px;margin:2px 8px 62px}
+nav::after{content:'A little less to remember.';margin-top:auto;color:#adc4b7;font-size:12px;padding:20px 10px;border-top:1px solid #3b594b}
+nav button{border-radius:8px;text-align:left;justify-content:flex-start;padding:14px 16px;color:#bdcec2;min-height:48px}
+nav button.on{background:#d9e8c8;color:#183b2e}nav button::before{font-size:20px;width:24px;font-weight:400}#nav-live::before{content:'◉'}#nav-memories::before{content:'▤'}#nav-ask::before{content:'✳'}
+.page-intro{margin-bottom:30px}.eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#5c7562;font-weight:600}.page-intro h2{font:normal clamp(32px,4vw,49px)/1.15 Georgia,serif;letter-spacing:-1.6px;margin:10px 0 12px}.page-intro p{color:var(--text-mid);margin:0;max-width:550px}
+.capture-card{position:relative;border-color:#c8d4bb;background:#edf1e4;padding:30px!important}.device-heading{display:flex;align-items:center;gap:16px;margin-bottom:28px}.device-emblem{width:54px;height:68px;border-radius:26px;background:#244b38;display:grid;place-items:center;color:#d4e9bd;font-size:25px;box-shadow:inset 0 0 0 5px #335c46}.device-heading h3{font-size:20px;margin:0 0 4px}.device-heading p{margin:0;font-size:13px;color:#5c6c59}
+.capture-card .row{gap:10px}#omiRecordBtn{order:-1;padding:13px 24px}#omiBtn{background:transparent;color:#31533d;border-color:#b4c4a7}#captureHint{font-size:13px;color:#52644e;line-height:1.65;margin:18px 0 0;max-width:660px}
+.capture-card details{border-top:1px solid #cfd8c3;padding-top:16px;margin-top:22px!important}.capture-card summary{font-size:12px;cursor:pointer;color:#56664f}.capture-card details .row{margin-top:14px}
+#feed{gap:0}#feed .empty{border:1px dashed #ced6c6;border-radius:16px;padding:42px 20px;background:transparent}.empty .glyph{font-size:0;filter:none}.empty .glyph::after{content:'∿';font:64px/1 Georgia,serif;color:#809972}.empty .hint{max-width:420px;margin:10px auto 0;line-height:1.6}.t-line{border-left:3px solid #93ae7e}.t-line .caption{margin-bottom:12px}.t-line>div:last-child{font-size:17px;line-height:1.7}.section-label{display:flex;justify-content:space-between;margin:30px 0 14px;font-size:12px;letter-spacing:.7px;color:#63715f}.section-label strong{font-weight:600;color:#30492f}
+#view-ask>.card{padding:30px}#askInput{border-radius:10px;background:#f5f5ee}.title-line{font-family:Georgia,serif;font-size:23px;font-weight:400;line-height:1.35}.sum{font-size:14px;line-height:1.6}#toast{background:#193b2e;color:#fff;border-color:#355a43;border-radius:10px}pre{overflow-wrap:anywhere}.hint{color:var(--text-mid)}
+@media(min-width:1500px){.wrap{margin-left:calc(236px + (100vw - 1500px)/2)}}
+@media(max-width:850px){nav{width:180px;padding:28px 12px}nav::before{font-size:19px;margin-left:5px}.wrap{margin-left:180px;padding:28px 24px 60px}.capture-card{padding:24px!important}.page-intro h2{font-size:38px}}
+@media(max-width:600px){.capture-card>.row>.pill{flex-basis:100%;width:fit-content}.section-label{gap:14px}.section-label span{max-width:160px;text-align:right}nav{top:auto;bottom:0;left:0;width:100%;flex-direction:row;padding:8px 10px calc(8px + env(safe-area-inset-bottom));gap:5px;border-radius:16px 16px 0 0}nav::before,nav::after{display:none}nav button{flex:1;justify-content:center;padding:10px 5px;font-size:12px;gap:5px}nav button::before{font-size:17px;width:18px}.wrap{margin:0;padding:22px 18px 105px}header.app{margin-bottom:28px;padding-bottom:18px}.page-intro h2{font-size:36px}.page-intro p{font-size:14px}.capture-card{padding:21px!important}.device-heading{margin-bottom:22px}.capture-card>.row>.pill{font-size:11px}#omiRecordBtn,#omiBtn{flex:1;justify-content:center;padding:12px 10px}#micSel{flex-basis:100%}.card{padding:19px}#askInput{min-width:0;width:100%}#view-ask>.card{padding:19px}.pill{max-width:100%;overflow-wrap:anywhere}}
+
 </style>
 </head>
 <body>
@@ -178,15 +209,22 @@ audio { width:100%; margin-top:12px; }
 
   <!-- ================= LIVE ================= -->
   <section id="view-live" class="view" aria-label="Live capture">
-    <div class="card">
+    <div class="page-intro"><div class="eyebrow">Your personal memory space</div><h2>Be here. Remember later.</h2><p>Capture a conversation with Omi. Give your thoughts somewhere to return to.</p></div>
+    <div class="card capture-card">
+      <div class="device-heading"><div class="device-emblem" aria-hidden="true">∿</div><div><h3>Omi microphone</h3><p>Your pendant. Your conversations.</p></div></div>
       <div class="row" style="margin-bottom:10px">
-        <button id="omiBtn" class="primary" aria-label="Connect Omi pendant">Connect Omi</button>
+        <button id="omiBtn" class="primary" aria-label="Connect Omi">Connect Omi</button>
+        <button id="omiRecordBtn" disabled>Start recording</button>
+
         <span class="pill" id="omiPill">omi: disconnected</span>
       </div>
+      <details style="margin-top:12px"><summary>Use a computer or phone microphone instead</summary>
       <div class="row">
-        <select id="micSel" class="grow" aria-label="Audio input device"><option value="">Default microphone</option></select>
-        <button id="micBtn" aria-label="Start recording">● Record</button>
+        <select id="micSel" class="grow" aria-label="Computer or phone microphone (not Omi)"><option value="">Default computer/phone microphone</option></select>
+        <button id="micBtn" aria-label="Record microphone">● Record microphone</button>
       </div>
+      </details>
+      <p class="hint" id="captureHint" role="status">Connect Omi, then choose Start recording. Stop recording saves your session and keeps Omi connected.</p>
     </div>
 
     <div class="card">
@@ -205,13 +243,15 @@ audio { width:100%; margin-top:12px; }
       </div>
     </div>
 
+    <div class="section-label"><strong>LIVE TRANSCRIPT</strong><span>Updates after a short pause</span></div>
     <div id="feed" aria-live="polite">
-      <div class="empty"><div class="glyph">🎙️</div>Ready to listen<div class="hint">Press Record, or connect your Omi.</div></div>
+      <div class="empty"><div class="glyph">🎙️</div>Ready to listen<div class="hint">Connect Omi, then press Start recording.</div></div>
     </div>
   </section>
 
   <!-- ================= MEMORIES ================= -->
   <section id="view-memories" class="view hidden" aria-label="Memories">
+    <div class="page-intro"><div class="eyebrow">Your collection</div><h2>A place for every thought.</h2><p>Revisit conversations, find a detail, or pick up where you left off.</p></div>
     <div id="mem-list">
       <div class="row" style="margin-bottom:14px">
         <input id="searchBox" class="grow" placeholder="Search your memories…" aria-label="Search memories">
@@ -271,6 +311,7 @@ audio { width:100%; margin-top:12px; }
 
   <!-- ================= ASK ================= -->
   <section id="view-ask" class="view hidden" aria-label="Ask your memories">
+    <div class="page-intro"><div class="eyebrow">Connect the dots</div><h2>What’s on your mind?</h2><p>Find answers in your saved conversations, with sources you can revisit.</p></div>
     <div class="card">
       <form class="row" id="askForm">
         <input id="askInput" placeholder="Ask your memories anything…" aria-label="Ask a question" autocomplete="off">
@@ -283,7 +324,7 @@ audio { width:100%; margin-top:12px; }
 </div>
 
 <nav aria-label="Main">
-  <button id="nav-live" class="on" aria-label="Live view">Live</button>
+  <button id="nav-live" class="on" aria-label="Live view">Capture</button>
   <button id="nav-memories" aria-label="Memories view">Memories</button>
   <button id="nav-ask" aria-label="Ask view">Ask</button>
 </nav>
@@ -354,16 +395,37 @@ setInterval(() => { if (ws && ws.readyState === 1) ws.send("ping"); }, 20000);
 
 function applyStatus(s) {
   state.status = s;
-  const eng = s.live_engine === "groq" ? "Groq i hate you -v3 live" : "Whisper " + s.model + " local";
+  const eng = s.live_engine === "groq" ? "Groq Whisper large-v3 live" : "Whisper " + s.model + " local";
   $("engineLine").textContent = s.model_ready ? eng + " · " + (s.ai ? "AI online" : "offline mode") : "loading model…";
   if (!state.omiBt) {   // browser-Bluetooth Omi manages the button itself
     $("omiPill").textContent = "omi: " + s.omi;
-    $("omiPill").className = "pill " + (s.omi.startsWith("connected") ? "ok" : s.omi.includes("...") ? "warn" : "");
-    state.omiOn = s.omi.startsWith("connected") || s.omi.includes("...");
+    $("omiPill").className = "pill " + ((s.omi || "").startsWith("connected") ? "ok" : (s.omi || "").includes("...") ? "warn" : "");
+    state.omiOn = !!s.omi_active;
     $("omiBtn").textContent = state.omiOn ? "Disconnect Omi" : "Connect Omi";
     $("omiBtn").className = state.omiOn ? "danger" : "primary";
   }
+  $("omiBtn").setAttribute("aria-label", $("omiBtn").textContent);
+  const usingOmi = !!s.omi_recording || !!omi.recording;
+  const connected = !!s.omi_connected || !!omi.on;
+  $("omiRecordBtn").textContent = usingOmi ? "Stop recording" : "Start recording";
+  $("omiRecordBtn").className = usingOmi ? "danger" : "primary";
+  $("omiRecordBtn").disabled = !connected || (!!s.capture_busy && !usingOmi);
+  $("captureHint").textContent = usingOmi
+    ? "Omi microphone — recording. Stop recording saves this session and keeps your pendant connected."
+    : connected ? "Omi microphone — connected, not recording. Press Start recording when you are ready."
+    : s.capture_busy ? "Microphone capture is active. Stop it in the browser or app that started it."
+    : "Connect Omi, then choose Start recording. Stop recording saves your session and keeps Omi connected.";
+  $("micSel").disabled = !!s.capture_busy;
+  const empty = document.querySelector("#feed .empty");
+  if (empty) empty.innerHTML = s.session
+    ? '<div class="glyph">🎙️</div>Recording — waiting for speech<div class="hint">Transcripts arrive in batches: about 6–20 seconds of audio, plus processing time.</div>'
+    : s.capture_busy ? '<div class="glyph">🎙️</div>Connecting audio…<div class="hint">Waiting for audio from your device.</div>'
+    : '<div class="glyph">🎙️</div>Ready to listen<div class="hint">Connect Omi, then press Start recording. A stopped recording may still be processing.</div>';
   setRec(!!s.session, s.recorded_secs || 0);
+  $("micBtn").disabled = !!s.capture_busy && !state.micOn;
+  $("omiBtn").disabled = false;
+  if (s.error && s.error !== state.lastError) toast(s.error);
+  state.lastError = s.error;
 }
 
 function setRec(on, secs) {
@@ -381,7 +443,7 @@ function addLine(m) {
   document.querySelector("#feed .empty")?.remove();
   const div = document.createElement("div");
   div.className = "card line-in t-line";
-  div.innerHTML = `<div class="caption">${esc(m.time)} · ${m.secs}s · ${esc(m.engine || "local")}</div><div></div>`;
+  div.innerHTML = `<div class="caption">${esc(m.time)} · ${esc(m.secs)}s audio${Number.isFinite(m.lag) ? " · " + m.lag + "s processing" : ""} · ${esc(m.engine || "local")}</div><div></div>`;
   div.lastElementChild.textContent = m.text;
   $("feed").appendChild(div);
   if (state.view === "live") window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
@@ -399,7 +461,8 @@ function onMemoryEvent(m) {
 const OMI_SVC = "19b10000-e8f2-537e-4f6c-d104768a1214";
 const OMI_AUDIO = "19b10001-e8f2-537e-4f6c-d104768a1214";
 const OMI_CODEC = "19b10002-e8f2-537e-4f6c-d104768a1214";
-const omi = { dev: null, ws: null, dec: null, buf: [], lastPkt: null, ts: 0, on: false };
+const omi = { dev: null, ws: null, dec: null, buf: [], lastPkt: null, lastIndex: null, ts: 0, on: false };
+const localCapture = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 
 function omiSetBtn(on) {
   state.omiBt = on;
@@ -407,6 +470,7 @@ function omiSetBtn(on) {
   $("omiPill").className = "pill " + (on ? "ok" : "");
   $("omiBtn").textContent = on ? "Disconnect Omi" : "Connect Omi";
   $("omiBtn").className = on ? "danger" : "primary";
+  $("omiBtn").setAttribute("aria-label", $("omiBtn").textContent);
 }
 
 function catBytes(arr) {
@@ -423,18 +487,37 @@ function omiEmitOpus(bytes) {
   } catch (e) { /* skip a corrupt frame, keep the stream alive */ }
 }
 
+function omiEmitFrame(payload, codec) {
+  if (codec === 0 || codec === 1) {           // raw PCM16 — forward as-is
+    if (payload.length % 2) return;
+    let pcm = payload;
+    if (codec === 1) {
+      const src = new Int16Array(payload.buffer), out = new Int16Array(src.length * 2);
+      for (let i = 0; i < src.length; i++) out[2*i] = out[2*i+1] = src[i];
+      pcm = out;
+    }
+    if (omi.recording && omi.ws && omi.ws.readyState === 1) omi.ws.send(pcm.buffer);
+    return;
+  }
+  omiEmitOpus(payload);
+}
+
 function omiOnPacket(dv, codec) {
   if (dv.byteLength < 4) return;
   const pkt = dv.getUint16(0, true);
+  const index = dv.getUint8(2);
   const payload = new Uint8Array(dv.buffer.slice(dv.byteOffset + 3, dv.byteOffset + dv.byteLength));
-  if (codec === 0 || codec === 1) {           // raw PCM16 — forward as-is
-    if (omi.ws && omi.ws.readyState === 1) omi.ws.send(payload.buffer);
-    return;
+  if (pkt === omi.lastPkt) return;
+  const contiguous = omi.lastPkt === null || pkt === (omi.lastPkt + 1) % 65536;
+  if (index === 0) {
+    if (contiguous && omi.buf.length) omiEmitFrame(catBytes(omi.buf), codec);
+    omi.buf = [payload];
+  } else if (contiguous && omi.buf.length && index === omi.lastIndex + 1) {
+    omi.buf.push(payload);
+  } else {
+    omi.buf = [];
   }
-  if (omi.lastPkt !== null && pkt !== omi.lastPkt && omi.buf.length) {
-    omiEmitOpus(catBytes(omi.buf)); omi.buf = [];
-  }
-  omi.lastPkt = pkt; omi.buf.push(payload);
+  omi.lastPkt = pkt; omi.lastIndex = index;
 }
 
 async function omiConnect() {
@@ -451,48 +534,122 @@ async function omiConnect() {
     const gatt = await dev.gatt.connect();
     const svc = await gatt.getPrimaryService(OMI_SVC);
     const audio = await svc.getCharacteristic(OMI_AUDIO);
-    let codec = 20;
-    try { codec = (await (await svc.getCharacteristic(OMI_CODEC)).readValue()).getUint8(0); } catch {}
+    const codec = (await (await svc.getCharacteristic(OMI_CODEC)).readValue()).getUint8(0);
+    if (![0, 1, 20, 21].includes(codec)) throw new Error("Unsupported Omi codec: " + codec);
 
-    omi.ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/audio");
-    omi.ws.binaryType = "arraybuffer";
-    await new Promise((res, rej) => { omi.ws.onopen = res; omi.ws.onerror = () => rej(new Error("stream failed")); });
-
-    omi.buf = []; omi.lastPkt = null; omi.ts = 0;
+    omi.buf = []; omi.lastPkt = null; omi.lastIndex = null; omi.ts = 0;
     if (codec === 20 || codec === 21) {
       if (!("AudioDecoder" in window)) throw new Error("this browser lacks Opus decoding (use Chrome)");
       omi.dec = new AudioDecoder({
         output: (ad) => {
           const n = ad.numberOfFrames, f = new Float32Array(n);
+          const rate = ad.sampleRate;
           ad.copyTo(f, { planeIndex: 0, format: "f32-planar" }); ad.close();
-          const i16 = new Int16Array(n);
-          for (let i = 0; i < n; i++) i16[i] = Math.max(-1, Math.min(1, f[i])) * 32767;
-          if (omi.ws && omi.ws.readyState === 1) omi.ws.send(i16.buffer);
+          const i16 = down16k(f, rate);
+          if (omi.recording && omi.ws && omi.ws.readyState === 1) omi.ws.send(i16.buffer);
         },
-        error: (e) => console.error("opus decode", e),
+        error: (e) => { omiDisconnect(); toast("Omi audio decoding failed: " + e.message); },
       });
       omi.dec.configure({ codec: "opus", sampleRate: 16000, numberOfChannels: 1 });
     }
-    audio.addEventListener("characteristicvaluechanged", (ev) => omiOnPacket(ev.target.value, codec));
+    audio.addEventListener("characteristicvaluechanged", (ev) => { if (omi.recording) omiOnPacket(ev.target.value, codec); });
     await audio.startNotifications();
-    dev.addEventListener("gattserverdisconnected", omiDisconnect);
+    dev.addEventListener("gattserverdisconnected", () => {
+      if (omi.on) { omiDisconnect(); toast("Omi disconnected. Reconnect to continue recording."); }
+    });
     omi.dev = dev; omi.on = true; omiSetBtn(true);
-    toast("Omi connected 🎙️ — recording");
+    applyStatus(state.status || {});
+    toast("Omi connected — press Start recording when ready");
   } catch (e) {
     toast("Omi failed: " + (e.message || e));
     try { dev.gatt.disconnect(); } catch {}
+    omiDisconnect();
     omiSetBtn(false); $("omiPill").className = "pill";
   }
 }
 
+async function omiStartRecording() {
+  if (!omi.on || omi.recording || omi.ws) return;
+  if (omi.dec && omi.dec.state !== "closed") {
+    omi.dec.reset();
+    omi.dec.configure({ codec: "opus", sampleRate: 16000, numberOfChannels: 1 });
+  }
+  omi.buf = []; omi.lastPkt = null; omi.lastIndex = null;
+  const socket = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/audio");
+  omi.ws = socket;
+  socket.binaryType = "arraybuffer";
+  try {
+    const opened = await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error, connected) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        socket.onopen = socket.onerror = socket.onclose = null;
+        if (omi.ws === socket) omi.cancelStart = null;
+        error ? reject(error) : resolve(connected);
+      };
+      const timer = setTimeout(() => finish(new Error("Recording connection timed out")), 10000);
+      omi.cancelStart = () => finish(null, false);
+      socket.onopen = () => finish(null, true);
+      socket.onerror = socket.onclose = () => finish(new Error("Cannot start recording; another recording may be active"));
+    });
+    if (!opened || omi.ws !== socket || !omi.on) return;
+    socket.onclose = socket.onerror = () => {
+      if (omi.ws !== socket) return;
+      omiStopRecording();
+      toast("Recording stopped: server connection lost. Press Start recording to retry.");
+    };
+    omi.recording = true;
+    applyStatus(state.status || {});
+  } catch (e) {
+    if (omi.ws !== socket) return;
+    omiStopRecording();
+    throw e;
+  }
+}
+function omiStopRecording() {
+  omi.recording = false;
+  const socket = omi.ws;
+  const cancel = omi.cancelStart;
+  omi.ws = null; omi.cancelStart = null;
+  if (cancel) cancel();
+  if (socket) { socket.onopen = socket.onclose = socket.onerror = null; socket.close(); }
+  omi.buf = []; omi.lastPkt = null; omi.lastIndex = null;
+  applyStatus(state.status || {});
+}
+$("omiRecordBtn").onclick = async () => {
+  $("omiRecordBtn").disabled = true;
+  try {
+    if (localCapture) {
+      await api(state.status?.omi_recording ? "/omi/record/stop" : "/omi/record/start", {method:"POST"});
+      applyStatus(await api("/status"));
+    } else if (omi.recording) omiStopRecording();
+    else await omiStartRecording();
+  } catch (e) { toast(e.message); }
+  finally { applyStatus(state.status || {}); }
+};
+
 function omiDisconnect() {
+  omiStopRecording();
+  omi.on = false;
   try { if (omi.dev && omi.dev.gatt.connected) omi.dev.gatt.disconnect(); } catch {}
   try { omi.ws && omi.ws.close(); } catch {}
   try { if (omi.dec && omi.dec.state !== "closed") omi.dec.close(); } catch {}
   omi.on = false; omi.dev = null; omiSetBtn(false);
+  applyStatus(state.status || {});
 }
 
-$("omiBtn").onclick = () => omi.on ? omiDisconnect() : omiConnect();
+$("omiBtn").onclick = async () => {
+  if (localCapture) {
+    $("omiBtn").disabled = true;
+    try {
+      await api(state.omiOn ? "/omi/disconnect" : "/omi/connect", {method:"POST"});
+      applyStatus(await api("/status"));
+    } catch (e) { toast(e.message); }
+    finally { $("omiBtn").disabled = false; }
+  } else { omi.on ? omiDisconnect() : omiConnect(); }
+};
 
 async function refreshDevices() {
   const sel = $("micSel"), cur = sel.value;
@@ -501,7 +658,7 @@ async function refreshDevices() {
   if (window.MemoryOSNative && window.MemoryOSNative.listInputs) {
     try {
       const list = JSON.parse(window.MemoryOSNative.listInputs());
-      sel.innerHTML = '<option value="">Default microphone</option>';
+      sel.innerHTML = '<option value="">Default computer/phone microphone</option>';
       list.forEach(d => {
         const o = document.createElement("option");
         o.value = String(d.id); o.textContent = d.label; sel.appendChild(o);
@@ -512,7 +669,7 @@ async function refreshDevices() {
   }
   try {
     const devs = await navigator.mediaDevices.enumerateDevices();
-    sel.innerHTML = '<option value="">Default microphone</option>';
+    sel.innerHTML = '<option value="">Default computer/phone microphone</option>';
     devs.filter(d => d.kind === "audioinput" && d.deviceId && d.deviceId !== "default").forEach((d, i) => {
       const o = document.createElement("option");
       o.value = d.deviceId; o.textContent = d.label || "Input device " + (i + 1);
@@ -572,26 +729,35 @@ async function startMic() {
   audioCtx.createMediaStreamSource(micStream).connect(worklet);
   micWs = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/audio");
   micWs.binaryType = "arraybuffer";
+  await new Promise((res, rej) => {
+    const timer = setTimeout(() => rej(new Error("Recording connection timed out")), 10000);
+    micWs.onopen = () => { clearTimeout(timer); res(); };
+    micWs.onerror = micWs.onclose = () => { clearTimeout(timer); rej(new Error("Recording connection unavailable or busy")); };
+  }).catch(e => { stopMic(); throw e; });
+  micWs.onclose = micWs.onerror = () => {
+    if (state.micOn) { stopMic(); toast("Recording stopped: connection lost. Your received audio is saved."); }
+  };
   worklet.port.onmessage = e => { if (micWs.readyState === 1) micWs.send(down16k(e.data, audioCtx.sampleRate).buffer); };
   state.micOn = true;
-  $("micBtn").textContent = "■ Stop"; $("micBtn").className = "danger";
-  $("micBtn").setAttribute("aria-label", "Stop recording");
+  $("micBtn").textContent = "■ Stop microphone"; $("micBtn").className = "danger";
+  $("micBtn").setAttribute("aria-label", "Stop microphone recording");
 }
 function stopMic() {
+  state.micOn = false;
   micWs?.close(); worklet?.disconnect(); audioCtx?.close();
   micStream?.getTracks().forEach(t => t.stop());
   state.micOn = false;
-  $("micBtn").textContent = "● Record"; $("micBtn").className = "";
-  $("micBtn").setAttribute("aria-label", "Start recording");
+  $("micBtn").textContent = "● Record microphone"; $("micBtn").className = "";
+  $("micBtn").setAttribute("aria-label", "Record microphone");
 }
 /* Inside the native Android app, record via the OS foreground service so it
    survives the screen turning off. Transcripts still stream back over the
    events websocket, so the live feed updates exactly the same. */
 function nativeSetBtn(on) {
   state.micOn = on;
-  $("micBtn").textContent = on ? "■ Stop" : "● Record";
+  $("micBtn").textContent = on ? "■ Stop microphone" : "● Record microphone";
   $("micBtn").className = on ? "danger" : "";
-  $("micBtn").setAttribute("aria-label", on ? "Stop recording" : "Start recording");
+  $("micBtn").setAttribute("aria-label", on ? "Stop microphone recording" : "Record microphone");
 }
 function toggleRecord() {
   if (window.MemoryOSNative) {

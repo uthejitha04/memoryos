@@ -5,13 +5,28 @@ any working session. Newest entries at the top.
 
 ## Status
 
-- State: parked
+- State: active
 - Live URL: none public; runs locally, Railway config exists
-- Stranger test: not passing
-- Currently working on: nothing in flight; the memory engine (transcribe, index, enrich, ask with citations) works locally
-- Blocked on investor: review any previously shared pairing credential before public distribution; project location is resolved
+- Stranger test: isolated capture-to-citation journey passes with real local models; user screenshots confirm Omi connection and speech capture; stop/save/playback walkthrough pending
+- Currently working on: web redesign ready for user review; native Android Omi capture remains next
+- Blocked on investor: nothing for local development; credential review remains a prerequisite before public distribution
 
 ## Session notes
+
+- 2026-09-15: Reproduced the pstack review finding with a deterministic browser test: an old failed Start cancelled a newer recording. Scoped callbacks to their socket and added explicit pending-start cancellation; removed broad click-handler cleanup. Regression now passes, alongside existing browser audio/control checks. No real device or recording data touched. Existing overlapping Bluetooth Connect and cross-session transcription-context risks remain separate follow-up work.
+
+- 2026-09-15: Prepared GitHub review of accumulated capture fixes and redesign. 95 isolated fast regressions passed (3 real-model tests deselected), with browser control/audio checks. Self-review moved WebSocket acceptance inside cleanup handling so failed starts release capture ownership. Added runtime CI and untracked runtime logs while preserving local files. Requested clarification of p-stack; no installed matching tool was found. Android capture remains pending.
+
+- 2026-09-15: Redesigned the web application as an ivory/forest-green workspace with desktop sidebar, compact mobile navigation, editorial headings across Capture/Memories/Ask, and a prominent Omi device panel. Preserved existing control IDs and capture behavior. Updated design guidance as a proposed direction pending user feedback. Node capture-control and packet/script checks passed; mocked headless Chrome screenshots inspected at desktop and 390px mobile widths, with no mobile horizontal overflow. Browser launch needed installed Chrome and sandbox escalation. No real recordings or device connections were used for visual checks. Android Omi capture implementation remains next after design review.
+
+- 2026-09-15: Clarified the source badge and recording status as Omi microphone; renamed the separate default input to Default computer/phone microphone so it cannot be mistaken for Omi. Browser control and audio/script checks passed. Label-only change; refresh after stopping to load it.
+
+- 2026-09-15: Implemented separate Omi Connect/Disconnect and Start/Stop recording, replacing the earlier label-only change. Local BLE and browser Bluetooth remain connected after Stop; idle audio is discarded, recording boundaries reset buffered frames, and connection loss stops capture. Added backend recording endpoints/status flags and made Omi the primary UI source with computer/phone microphone controls collapsed separately. Updated README. 26 isolated lifecycle/capture/API/security tests passed (one real-model test deselected), including simulated BLE idle/start/stop/start, plus Node browser packet/control and stop/restart checks. Initial sandbox pytest attempt hit temporary-directory permissions; rerun outside sandbox passed. Real server/device were not interrupted; backend restart and physical acceptance still required.
+
+- 2026-09-15: User hardware screenshots confirm Omi connected and transcribed speech, but automatic capture on connect and a disabled microphone button were confusing. Renamed Omi actions Start/Stop Omi recording, distinguished microphone controls, explained source exclusivity, and made the empty state reflect connecting/recording. Transcript captions now label audio duration and report processing time (excluding queue wait). Updated README. Browser audio-helper/script syntax and five mocked capture-control states passed; whitespace check passed. Recording behavior and transcription performance were not changed; no live recording was interrupted. Physical stop/save/playback and end-to-end latency remain to verify.
+
+- 2026-09-15: Started MemoryOS verification while preserving all pending work and private data. Found live-only citations were indexed at 0:00; now queue entries and JSONL carry captured audio offsets, and recovery/reindex preserve them. Added a disposable WebSocket capture -> WAV/transcript -> memory -> Ask journey covering leading silence, database reopen, orphan recovery and manual reindex, plus truncated-JSONL recovery. 71 selected fast tests, one real cached Whisper/MiniLM journey and the browser audio-helper checks passed with cloud keys/sync disabled and model downloads blocked. No physical pendant/microphone capture, deployment or GitHub changes. Old recordings lacking offsets still fall back to the beginning; new citations seek to the retrieved chunk start, not individual-word timing.
+
 
 - 2026-09-10: Prepared a draft PR from an isolated working tree. Handoff and staged-diff checks pass. Based on the latest upstream master, preserving its newer Render configuration. Unrelated local audio/retrieval repairs are excluded. Existing history may still contain the old token; runtime acceptance was not rerun.
 

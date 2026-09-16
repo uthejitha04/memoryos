@@ -27,10 +27,12 @@ def encode_opus_packets(pcm16: np.ndarray) -> list[bytes]:
 
 def to_ble_notifications(packets: list[bytes], mtu_payload=160) -> list[bytes]:
     out = []
-    for pkt_id, opus_pkt in enumerate(packets):
+    pkt_id = 0
+    for opus_pkt in packets:
         for frag_idx, off in enumerate(range(0, len(opus_pkt), mtu_payload)):
             header = pkt_id.to_bytes(2, "little") + bytes([frag_idx])
             out.append(header + opus_pkt[off:off + mtu_payload])
+            pkt_id = (pkt_id + 1) % 65536
     return out
 
 

@@ -36,8 +36,10 @@ def stub_hub(monkeypatch, tmp_path):
 
     monkeypatch.setattr(server.Hub, "_worker", lambda self: None)
     monkeypatch.setattr(server, "SESSIONS", tmp_path)
+    monkeypatch.setattr(server, "DATA", tmp_path)
     monkeypatch.setattr(server, "VOCAB_FILE", tmp_path / "vocab.txt")
     hub = server.Hub("stub-model")
+    hub.drain_timeout = 0.1  # stub worker deliberately never consumes chunks
     monkeypatch.setattr(server, "hub", hub)
     monkeypatch.setattr(server, "omi_link", server.OmiLink(hub))
     monkeypatch.setattr(server, "polisher", server.Polisher(hub))
@@ -56,4 +58,5 @@ def stub_hub(monkeypatch, tmp_path):
     monkeypatch.setattr(server, "memstore", store)
     server.polisher.on_polished = server.index_and_enrich
     yield hub
+    hub.wait_background(timeout=15)
     store.close()

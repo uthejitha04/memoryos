@@ -35,6 +35,29 @@ Run the capture-to-citation flow with disposable recordings and verify restart, 
 
 `python scripts/check_repository.py` checks the documentation contract and tracked local-secret filenames. GitHub Actions runs this baseline check; it does not certify runtime or deployment readiness.
 
-## PR scope note
+## Capture-to-citation verification (2026-09-15)
 
-This PR contains the repository setup and any explicitly listed consolidation changes. Other local feature work was excluded. LOG.md preserves local historical observations; those observations do not establish that this PR includes or verifies every feature mentioned there. Consult the PR description for its exact scope.
+Use a disposable data directory and disable cloud keys and sync before tests. Do not start the normal application against personal sessions for verification. The new journey streams the synthetic speech fixture through `/ws/audio`, checks the WAV and transcript, retrieves a cited excerpt via `/ask`, reopens SQLite, then verifies recovery and manual reindexing preserve the audio offset.
+
+```powershell
+$env:MEMORYOS_DATA = "$env:TEMP/memoryos-disposable-check"
+$env:MEMORYOS_SYNC_URL = ''
+$env:MEMORYOS_SYNC_TOKEN = ''
+$env:GEMINI_API_KEY = ''
+$env:GROQ_API_KEY = ''
+$env:OPENROUTER_API_KEY = ''
+$env:HF_HUB_OFFLINE = '1'
+$env:TRANSFORMERS_OFFLINE = '1'
+.venv/Scripts/python -m pytest tests/test_capture_to_citation.py -m 'not e2e' -q
+# Requires already-cached small Whisper and MiniLM models; does not download them:
+.venv/Scripts/python -m pytest tests/test_capture_to_citation.py::test_real_local_capture_to_citation -q
+node tests/test_browser_audio.cjs
+```
+
+The real-model journey passed on 2026-09-15, alongside 71 selected fast regressions. This is a software integration check using synthetic speech, not proof of physical Omi Bluetooth or browser microphone behavior. SQLite reopening is covered; an actual process-crash/relaunch walkthrough is still pending. Tests use no synthesized cloud answers; Ask returns cited excerpts in retrieval mode.
+
+New live JSONL entries contain a `start` offset derived from saved audio samples. Citations point to the start of a retrieved chunk. Legacy recordings without audio offsets retain the older beginning-of-recording fallback until polished; no personal sessions were automatically reindexed or rewritten.
+
+## Historical handoff PR scope note
+
+The earlier handoff PR contained the repository setup and any explicitly listed consolidation changes. Other local feature work was excluded. LOG.md preserves local historical observations; those observations do not establish that this PR includes or verifies every feature mentioned there. Consult the PR description for its exact scope.

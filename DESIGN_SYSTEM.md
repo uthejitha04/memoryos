@@ -1,6 +1,16 @@
 # MemoryOS — Design System
 
-Version 0.1 · 2026-07-04 · Apple Glass language for every MemoryOS surface.
+Current direction · 2026-09-15 · Quiet, Omi-first workspace.
+
+The current web application supersedes the historical glass specification below. Use ivory (#f5f4ef) for the workspace, forest green (#183b2e) for navigation, green (#285c43) for primary actions, and cream (#fffefa) for surfaces. Text is dark green (#20372c); borders are subtle (#dddfd4). Use Georgia for editorial page headings and Trebuchet MS with Segoe UI fallback for controls/body. No remote fonts are required.
+
+Desktop has a persistent left sidebar; narrow phones use a compact bottom navigation. Capture, Memories, and Ask each have a clear page introduction. Omi is the primary recording device; computer microphone controls remain collapsed inside an optional disclosure. Keep connection and recording actions distinct, with explicit state text. Do not animate audio activity without received-audio evidence. Preserve reduced-motion support, keyboard focus, and layouts without horizontal scrolling.
+
+This direction is implemented for review, not yet a confirmed user preference.
+
+## Historical specification (superseded for the web application)
+
+Version 0.1 · 2026-07-04 · Apple Glass language.
 
 ## 1. Principles
 
