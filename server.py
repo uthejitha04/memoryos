@@ -153,6 +153,10 @@ def chunk_to_wav_bytes(chunk: np.ndarray) -> bytes:
 
 app = FastAPI(title="MemoryOS")
 
+from mobile_ingest import make_router
+
+app.include_router(make_router(lambda: DATA, lambda: PAIRING_TOKEN))
+
 
 @app.get("/health")
 async def health():

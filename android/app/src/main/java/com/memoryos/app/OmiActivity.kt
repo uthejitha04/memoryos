@@ -33,6 +33,7 @@ class OmiActivity : Activity() {
     private lateinit var connect: Button
     private lateinit var record: Button
     private lateinit var library: LinearLayout
+    private lateinit var transcriptionStatus: TextView
     private var scanning: ScanCallback? = null
     private var scanDialog: AlertDialog? = null
     private var player: MediaPlayer? = null
@@ -85,11 +86,40 @@ class OmiActivity : Activity() {
         }; root.addView(record)
         root.addView(text("Stop saves the recording and keeps Omi connected. You can lock your screen while recording. This preview stops each recording after two hours.", 14f))
         root.addView(text("Saved on this phone", 22f))
-        root.addView(text("This first build saves audio locally. Transcription and upload are not connected yet. Uninstalling the app removes these recordings.", 13f))
+        root.addView(text("Audio stays on your phone. Transcribe sends a copy to your paired laptop over Wi-Fi. Uninstalling removes local recordings and transcripts.", 13f))
+        root.addView(button("Pair laptop") {
+            if (PhoneTranscription.busy) { message("Wait for the current transfer to finish."); return@button }
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "application/json"; addCategory(Intent.CATEGORY_OPENABLE)
+            }, 51)
+        })
+        transcriptionStatus = text(PhoneTranscription.status, 14f); root.addView(transcriptionStatus)
         root.addView(button("Stop playback") { stopPlayback() })
         library = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }; root.addView(library)
     }
     override fun onResume() { super.onResume(); handler.post(poll) }
+    @Deprecated("Activity result compatibility")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 51 && resultCode == RESULT_OK) {
+            try {
+                val uri = requireNotNull(data?.data)
+                val json = contentResolver.openInputStream(uri)!!.use { stream ->
+                    val buffer = java.io.ByteArrayOutputStream()
+                    val chunk = ByteArray(4096)
+                    while (buffer.size() <= 32768) {
+                        val count = stream.read(chunk)
+                        if (count < 0) break
+                        buffer.write(chunk, 0, count)
+                    }
+                    val bytes = buffer.toByteArray()
+                    require(bytes.size <= 32768) { "Pairing file too large" }
+                    bytes.toString(Charsets.UTF_8)
+                }
+                PhoneTranscription.pair(this, json)
+            } catch (_: Exception) { message("Could not read this pairing file.") }
+        }
+    }
     override fun onPause() { handler.removeCallbacks(poll); stopScan(); stopPlayback(); super.onPause() }
     private fun permissions(): Array<String> {
         val result = if (Build.VERSION.SDK_INT >= 31) mutableListOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
@@ -166,13 +196,14 @@ class OmiActivity : Activity() {
         } catch (e: Exception) { message("Could not start Omi: ${e.message}") }
     }
     private fun render() {
+        transcriptionStatus.text = PhoneTranscription.status
         status.text = OmiService.status
         connect.text = if (OmiService.connected) "Disconnect Omi" else "Connect Omi"
         record.text = if (OmiService.recording) "Stop recording" else "Start recording"
         record.isEnabled = OmiService.connected
         evidence.text = if (OmiService.recording) "Audio saved: ${OmiService.bytesRecorded / 1024} KB" else "Connected does not mean recording. You choose when to start."
         val files = File(filesDir, "recordings").listFiles()?.filter { it.extension == "wav" && it.length() > 44 }?.sortedByDescending { it.lastModified() } ?: emptyList()
-        val signature = files.joinToString { it.name } + OmiService.recording
+        val signature = files.joinToString { it.name } + OmiService.recording + PhoneTranscription.busy + PhoneTranscription.status
         if (signature == librarySignature) return
         librarySignature = signature; library.removeAllViews()
         if (files.isEmpty()) library.addView(text("Your recordings will appear here.", 14f))
@@ -189,6 +220,17 @@ class OmiActivity : Activity() {
                     }
                 } catch (_: Exception) { stopPlayback(); message("This recording could not be played.") }
             }.apply { isEnabled = !OmiService.recording })
+            library.addView(button("Transcribe") {
+                if (!OmiService.recording) PhoneTranscription.transcribe(this, file)
+            }.apply { isEnabled = !OmiService.recording && !PhoneTranscription.busy })
+            if (File(filesDir, "transcripts/${file.name}.txt").exists()) {
+                library.addView(button("Read transcript") {
+                    val content = PhoneTranscription.transcript(this, file).orEmpty().ifBlank { "No speech was detected in this recording." }
+                    AlertDialog.Builder(this).setTitle("Transcript")
+                        .setView(ScrollView(this).apply { addView(text(content).apply { setPadding(dp(20), dp(12), dp(20), dp(12)); setTextIsSelectable(true) }) })
+                        .setPositiveButton("Close", null).show()
+                })
+            }
         }
     }
     private fun stopPlayback() { player?.release(); player = null }
