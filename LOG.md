@@ -13,6 +13,8 @@ any working session. Newest entries at the top.
 
 ## Session notes
 
+- 2026-09-15: Reproduced the pstack review finding with a deterministic browser test: an old failed Start cancelled a newer recording. Scoped callbacks to their socket and added explicit pending-start cancellation; removed broad click-handler cleanup. Regression now passes, alongside existing browser audio/control checks. No real device or recording data touched. Existing overlapping Bluetooth Connect and cross-session transcription-context risks remain separate follow-up work.
+
 - 2026-09-15: Prepared GitHub review of accumulated capture fixes and redesign. 95 isolated fast regressions passed (3 real-model tests deselected), with browser control/audio checks. Self-review moved WebSocket acceptance inside cleanup handling so failed starts release capture ownership. Added runtime CI and untracked runtime logs while preserving local files. Requested clarification of p-stack; no installed matching tool was found. Android capture remains pending.
 
 - 2026-09-15: Redesigned the web application as an ivory/forest-green workspace with desktop sidebar, compact mobile navigation, editorial headings across Capture/Memories/Ask, and a prominent Omi device panel. Preserved existing control IDs and capture behavior. Updated design guidance as a proposed direction pending user feedback. Node capture-control and packet/script checks passed; mocked headless Chrome screenshots inspected at desktop and 390px mobile widths, with no mobile horizontal overflow. Browser launch needed installed Chrome and sandbox escalation. No real recordings or device connections were used for visual checks. Android Omi capture implementation remains next after design review.

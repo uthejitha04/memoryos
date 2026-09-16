@@ -60,3 +60,41 @@ console.log('Capture controls: idle, Omi recording, connecting, microphone, and 
   browser.omiStopRecording();
   console.log('Browser Omi recording stop/restart preserves Bluetooth connection');
 })().catch(e => { console.error(e); process.exitCode = 1; });
+
+(async () => {
+  const sockets = [], timers = new Map(), messages = [];
+  let nextTimer = 0;
+  class Socket {
+    constructor() { sockets.push(this); this.readyState = 0; }
+    close() { this.closed = true; this.readyState = 3; }
+  }
+  const buttons = {};
+  const c = {omi:{on:true,recording:false},state:{status:{}},WebSocket:Socket,
+    location:{protocol:'https:',host:'test'},localCapture:false,
+    $:id=>buttons[id] ||= {},applyStatus(){},toast:m=>messages.push(m),
+    setTimeout:fn=>{timers.set(++nextTimer,fn);return nextTimer;},clearTimeout:id=>timers.delete(id)};
+  vm.createContext(c);
+  vm.runInContext(script.slice(script.indexOf('async function omiStartRecording'), script.indexOf('function omiDisconnect')), c);
+  const first = buttons.omiRecordBtn.onclick();
+  const staleOpen = sockets[0].onopen, staleError = sockets[0].onerror;
+  c.omiStopRecording();
+  const second = buttons.omiRecordBtn.onclick();
+  sockets[1].readyState = 1; sockets[1].onopen();
+  await second;
+  staleError(); staleOpen();
+  await first;
+  assert.equal(c.omi.ws, sockets[1]);
+  assert.equal(c.omi.recording, true);
+  assert.equal(sockets[1].closed, undefined);
+  assert.equal(timers.size, 0);
+  assert.deepEqual(messages, []);
+  c.omiStopRecording();
+  const failed = buttons.omiRecordBtn.onclick();
+  sockets[2].onerror(); await failed;
+  assert.equal(c.omi.ws, null);
+  assert.equal(c.omi.recording, false);
+  assert.equal(sockets[2].closed, true);
+  assert.equal(messages.length, 1);
+  assert.equal(timers.size, 0);
+  console.log('Cancelled starts cannot affect later recordings; failures release their own socket');
+})().catch(e => {console.error(e);process.exitCode=1;});

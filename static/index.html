@@ -569,30 +569,52 @@ async function omiConnect() {
 }
 
 async function omiStartRecording() {
-  if (!omi.on || omi.recording) return;
+  if (!omi.on || omi.recording || omi.ws) return;
   if (omi.dec && omi.dec.state !== "closed") {
     omi.dec.reset();
     omi.dec.configure({ codec: "opus", sampleRate: 16000, numberOfChannels: 1 });
   }
   omi.buf = []; omi.lastPkt = null; omi.lastIndex = null;
-    omi.ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/audio");
-    omi.ws.binaryType = "arraybuffer";
-    await new Promise((res, rej) => {
-      const timer = setTimeout(() => rej(new Error("Recording connection timed out")), 10000);
-      omi.ws.onopen = () => { clearTimeout(timer); res(); };
-      omi.ws.onerror = omi.ws.onclose = () => { clearTimeout(timer); rej(new Error("Cannot start recording; another recording may be active")); };
+  const socket = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/audio");
+  omi.ws = socket;
+  socket.binaryType = "arraybuffer";
+  try {
+    const opened = await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error, connected) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        socket.onopen = socket.onerror = socket.onclose = null;
+        if (omi.ws === socket) omi.cancelStart = null;
+        error ? reject(error) : resolve(connected);
+      };
+      const timer = setTimeout(() => finish(new Error("Recording connection timed out")), 10000);
+      omi.cancelStart = () => finish(null, false);
+      socket.onopen = () => finish(null, true);
+      socket.onerror = socket.onclose = () => finish(new Error("Cannot start recording; another recording may be active"));
     });
-    omi.ws.onclose = omi.ws.onerror = () => {
-      if (omi.recording) { omiStopRecording(); toast("Recording stopped: server connection lost. Press Start recording to retry."); }
+    if (!opened || omi.ws !== socket || !omi.on) return;
+    socket.onclose = socket.onerror = () => {
+      if (omi.ws !== socket) return;
+      omiStopRecording();
+      toast("Recording stopped: server connection lost. Press Start recording to retry.");
     };
-
-  omi.recording = true;
-  applyStatus(state.status || {});
+    omi.recording = true;
+    applyStatus(state.status || {});
+  } catch (e) {
+    if (omi.ws !== socket) return;
+    omiStopRecording();
+    throw e;
+  }
 }
 function omiStopRecording() {
   omi.recording = false;
-  const socket = omi.ws; omi.ws = null;
-  if (socket) { socket.onclose = socket.onerror = null; socket.close(); }
+  const socket = omi.ws;
+  const cancel = omi.cancelStart;
+  omi.ws = null; omi.cancelStart = null;
+  if (cancel) cancel();
+  if (socket) { socket.onopen = socket.onclose = socket.onerror = null; socket.close(); }
   omi.buf = []; omi.lastPkt = null; omi.lastIndex = null;
   applyStatus(state.status || {});
 }
@@ -604,7 +626,7 @@ $("omiRecordBtn").onclick = async () => {
       applyStatus(await api("/status"));
     } else if (omi.recording) omiStopRecording();
     else await omiStartRecording();
-  } catch (e) { if (!localCapture) omiStopRecording(); toast(e.message); }
+  } catch (e) { toast(e.message); }
   finally { applyStatus(state.status || {}); }
 };
 
