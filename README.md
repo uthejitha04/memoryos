@@ -34,10 +34,36 @@ laptop mic --------> ┘                                       └--> sessions/*
 
 ### Setup
 
+The laptop app now uses the Python Bluetooth client when opened on localhost,
+including inside Electron. Turn on Windows Bluetooth, charge the pendant, and
+disconnect it from the official Omi app before choosing **Connect Omi**.
+Only one capture source can record at a time. If the pendant drops out, received
+audio remains in its WAV file and the client attempts to reconnect up to five
+times; the status explicitly identifies the recording gap. Audio generated
+while the pendant is disconnected is not recovered from device storage.
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 ```
+
+The requirements include the local memory engine. Prepare the models while
+online once, then use transcription and memory retrieval offline:
+
+```powershell
+.venv\Scripts\python -c "from memory import default_embedder; default_embedder(['setup'])"
+.venv\Scripts\python -c "from faster_whisper import WhisperModel; WhisperModel('small'); WhisperModel('distil-large-v3')"
+```
+
+Without an AI provider key, Ask returns relevant saved excerpts with citations;
+it does not generate new answers or AI summaries. The embedding, live, and
+polish models were installed and tested on this computer during the repair.
+
+### Verified capture and citations
+
+The isolated recording-to-Ask flow was verified on 2026-09-15 using synthetic speech and the real local Whisper and MiniLM models. New live recordings preserve audio offsets, so citations can seek to the retrieved chunk without waiting for polishing. Recovery and reindexing preserve those offsets. Older transcripts without offsets still fall back to the beginning until polished.
+
+The user verified physical Omi speech capture and connection retention after stopping. All-day mobile capture and interruption recovery remain unverified. See [Development](DEVELOPMENT.md) for the reproducible checks and their limits.
 
 ### Run
 
@@ -48,10 +74,10 @@ start.bat                                 # or: .venv\Scripts\python server.py
 Opens http://localhost:8090. In the app:
 
 - **Live tab**
-  - **Connect Omi** — scans for the pendant and streams its audio.
+  - **Connect Omi** — connects the pendant without recording. Then press **Start recording**.
     (First disconnect it from the Omi phone app — BLE allows one connection
     at a time. Pendant must be charged and nearby.)
-  - **Device picker + 🎙️ Record** — use any input: built-in mic, headset,
+  - **Device picker + Record microphone** — use any input: built-in mic, headset,
     USB/Bluetooth mic. Device names appear after the first recording grants
     mic permission.
   - A red **REC** timer shows while a session is recording.
@@ -130,8 +156,10 @@ no server:
 
 - Audio service `19b10000-e8f2-537e-4f6c-d104768a1214`
 - Audio characteristic `19b10001-...` (notify): each notification is
-  `[packet_id u16 LE][frame_index u8][opus fragment]`; fragments sharing a
-  packet_id are reassembled into one Opus frame.
+  `[packet_id u16 LE][frame_index u8][audio fragment]`; the packet counter
+  increments for every notification, while index zero starts a new frame.
+  Duplicate notifications are ignored; gaps discard the partial frame until
+  the next frame start. The final unconfirmed frame is discarded on disconnect.
 - Codec characteristic `19b10002-...` (read): 0/1 = PCM16 16k/8k, 20/21 = Opus 16k.
 
 ## Roadmap
@@ -139,3 +167,22 @@ no server:
 - Phase 3: HTTPS (self-signed) so the phone browser can stream its mic;
   optional Groq free-tier Whisper large-v3 for cloud-quality accuracy;
   speaker diarization; summaries.
+
+<!-- repository-guide:start -->
+## Repository guide
+
+- [Agent instructions](AGENTS.md)
+- [Founder mission](FOUNDER.md)
+- [Current status and session history](LOG.md)
+- [Architecture](ARCHITECTURE.md)
+- [Roadmap](ROADMAP.md)
+- [Setup and verification](DEVELOPMENT.md)
+<!-- repository-guide:end -->
+
+### Live recording controls
+
+**Connect Omi** connects the pendant without recording. **Start recording** captures Omi audio; **Stop recording** saves the session and leaves Bluetooth connected. **Disconnect Omi** explicitly closes the connection (and stops any active Omi recording). Idle audio is discarded, and a new recording starts a fresh session. Connection loss stops recording; after reconnection, press Start recording again.
+
+Omi is the primary source. Computer/phone microphone controls are under **Use a computer or phone microphone instead**; only one source can record at a time. Live transcripts arrive after roughly 6–20 seconds of audio plus processing time. Captions distinguish audio duration from processing time, which excludes queue wait.
+
+After updating this version, restart the Python server and refresh the page: the separate recording controls require the new backend endpoints.

@@ -40,32 +40,57 @@ MIN_CHUNK_SECS = 6.0
 MAX_CHUNK_SECS = 20.0
 
 
-class OpusStreamDecoder:
+class AudioFrameAssembler:
     """Reassembles Omi BLE notifications into Opus frames and decodes to PCM.
 
     Each notification: [packet_id u16 LE][frame_index u8][payload...].
-    Fragments of one Opus frame share a packet_id; a new packet_id means
-    the previous frame is complete.
+    The packet counter advances per notification; index zero starts a frame.
+    A missing notification invalidates the buffered frame until the next start.
     """
 
     def __init__(self):
-        self.codec = av.CodecContext.create("opus", "r")
-        self.resampler = av.AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
         self._buf = bytearray()
         self._last_pkt = None
+        self._last_index = None
+        self.dropped_frames = 0
 
     def feed(self, data: bytes) -> np.ndarray | None:
         if len(data) < 4:
             return None
         pkt_id = int.from_bytes(data[:2], "little")
+        index = data[2]
         payload = data[3:]
         out = None
-        if self._last_pkt is not None and pkt_id != self._last_pkt and self._buf:
-            out = self._decode(bytes(self._buf))
+        contiguous = self._last_pkt is None or pkt_id == (self._last_pkt + 1) % 65536
+        if pkt_id == self._last_pkt:
+            return None  # duplicate notification
+        if index == 0:
+            if self._buf and contiguous:
+                out = self._decode(bytes(self._buf))
+            elif self._buf:
+                self.dropped_frames += 1
+            self._buf = bytearray(payload)
+        elif (self._buf and contiguous and self._last_index is not None
+              and index == self._last_index + 1):
+            self._buf.extend(payload)
+        else:
+            self.dropped_frames += 1
             self._buf.clear()
         self._last_pkt = pkt_id
-        self._buf.extend(payload)
+        self._last_index = index
         return out
+
+    def flush(self):
+        # The wire format has no end flag. Do not decode a potentially partial
+        # final frame on disconnect; at most one short Opus frame is discarded.
+        self._buf.clear()
+        self._last_pkt = self._last_index = None
+
+class OpusStreamDecoder(AudioFrameAssembler):
+    def __init__(self):
+        super().__init__()
+        self.codec = av.CodecContext.create("opus", "r")
+        self.resampler = av.AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
 
     def _decode(self, frame: bytes) -> np.ndarray | None:
         try:
@@ -82,17 +107,16 @@ class OpusStreamDecoder:
         return None
 
 
-class PcmStreamDecoder:
+class PcmStreamDecoder(AudioFrameAssembler):
     """Fallback for firmware streaming raw PCM16."""
 
     def __init__(self, rate: int):
+        super().__init__()
         self.rate = rate
-        self._last_pkt = None
 
-    def feed(self, data: bytes) -> np.ndarray | None:
-        if len(data) < 4:
+    def _decode(self, payload: bytes) -> np.ndarray | None:
+        if len(payload) % 2:
             return None
-        payload = data[3:]
         pcm = np.frombuffer(payload, dtype="<i2").astype(np.float32) / 32768.0
         if self.rate != SAMPLE_RATE:  # crude upsample 8k -> 16k
             pcm = np.repeat(pcm, SAMPLE_RATE // self.rate)

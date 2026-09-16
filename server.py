@@ -199,6 +199,10 @@ class Session:
 
     def __init__(self):
         self.name = dt.datetime.now().strftime("session_%Y%m%d_%H%M%S")
+        stamp = dt.datetime.now()
+        while (SESSIONS / f"{self.name}.txt").exists():
+            stamp += dt.timedelta(seconds=1)
+            self.name = stamp.strftime("session_%Y%m%d_%H%M%S")
         self.txt = SESSIONS / f"{self.name}.txt"
         self.jsonl = SESSIONS / f"{self.name}.jsonl"
         self.wav_path = SESSIONS / f"{self.name}.wav"
@@ -209,6 +213,9 @@ class Session:
         self._lock = threading.Lock()
         self.samples = 0
         self.line_count = 0
+        self.pending = 0
+        self.drained = threading.Event()
+        self.drained.set()
         # create the transcript file up front so the session is listed even
         # if nothing transcribable is ever spoken
         self.txt.touch()
@@ -249,9 +256,13 @@ class Hub:
         self.auto_polish = auto_polish
         self.loop: asyncio.AbstractEventLoop | None = None
         self.clients: set[WebSocket] = set()
-        self.chunks: queue.Queue[tuple[Session | None, np.ndarray] | None] = queue.Queue()
+        self.chunks: queue.Queue[tuple[Session | None, np.ndarray, float] | None] = queue.Queue()
         self.session: Session | None = None
-        self.chunker = Chunker(on_chunk=lambda c: self.chunks.put((self.session, c)))
+        self.chunker = Chunker(on_chunk=self._enqueue)
+        self.capture_owner = None
+        self.error = None
+        self.background = set()
+        self.background_lock = threading.Lock()
         self.model_ready = False
         self.source = "none"          # none | mic | omi
         self.omi_status = "disconnected"
@@ -260,6 +271,52 @@ class Hub:
         threading.Thread(target=self._worker, daemon=True).start()
 
     # -- session lifecycle ------------------------------------------------
+    def run_background(self, fn, *args):
+        def run():
+            try:
+                fn(*args)
+            finally:
+                with self.background_lock:
+                    self.background.discard(threading.current_thread())
+        thread = threading.Thread(target=run, daemon=True)
+        with self.background_lock:
+            self.background.add(thread)
+        thread.start()
+
+    def wait_background(self, timeout=10):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            with self.background_lock:
+                pending = list(self.background)
+            if not pending:
+                return
+            for thread in pending:
+                thread.join(max(0, deadline - time.monotonic()))
+
+    def claim_capture(self, owner, source):
+        if self.capture_owner is not None:
+            raise HTTPException(409, "A recording is already active. Stop it first.")
+        self.capture_owner = owner
+        self.source = source
+        self.error = None
+
+    def release_capture(self, owner):
+        if self.capture_owner is owner:
+            self.end_session()
+            self.capture_owner = None
+            self.source = "none"
+            self.notify_status()
+
+    def _enqueue(self, chunk):
+        session = self.session
+        if session is not None:
+            with session._lock:
+                session.pending += 1
+                session.drained.clear()
+        # Captured sample position, not wall time or transcription completion time.
+        start = max(0, session.samples - len(chunk)) / SAMPLE_RATE if session else 0.0
+        self.chunks.put((session, chunk, start))
+
     def start_session(self) -> Session:
         if self.session is None:
             self.session = Session()
@@ -282,9 +339,7 @@ class Hub:
             def enrich_now():
                 # transcription of the final chunks may still be draining;
                 # give the worker queue a moment before reading the transcript
-                deadline = time.time() + self.drain_timeout
-                while not self.chunks.empty() and time.time() < deadline:
-                    time.sleep(0.5)
+                ended.drained.wait(self.drain_timeout)
                 segs = live_transcript_segments(ended.name)
                 if segs:
                     try:
@@ -292,8 +347,8 @@ class Hub:
                     except Exception:
                         log.exception("immediate enrich failed for %s", ended.name)
 
-            if memstore is not None and ended.line_count > 0:
-                threading.Thread(target=enrich_now, daemon=True).start()
+            if memstore is not None and (ended.line_count > 0 or ended.pending):
+                self.run_background(enrich_now)
             if (self.auto_polish and polisher is not None
                     and ended.samples / SAMPLE_RATE >= 3.0
                     and not polisher.running(ended.name)):
@@ -343,35 +398,52 @@ class Hub:
             item = self.chunks.get()
             if item is None:
                 break
-            session, chunk = item
+            session, chunk, start = item
             t0 = time.time()
             try:
                 text, engine = self.live_transcribe(chunk)
-            except Exception:
-                continue
-            if not text:
-                continue
-            self.last_text = text
-            entry = {
-                "type": "transcript",
-                "time": dt.datetime.now().strftime("%H:%M:%S"),
-                "text": text,
-                "secs": round(len(chunk) / SAMPLE_RATE, 1),
-                "lag": round(time.time() - t0, 1),
-                "engine": engine,
-            }
-            if session is not None:
-                entry["session"] = session.name
-                session.add_line(entry)
-            self.broadcast(entry)
+                if not text:
+                    continue
+                self.last_text = text
+                entry = {
+                    "type": "transcript",
+                    "time": dt.datetime.now().strftime("%H:%M:%S"),
+                    "text": text,
+                    "secs": round(len(chunk) / SAMPLE_RATE, 1),
+                    "lag": round(time.time() - t0, 1),
+                    "engine": engine,
+                    "start": start,
+                }
+                if session is not None:
+                    entry["session"] = session.name
+                    session.add_line(entry)
+                self.broadcast(entry)
+            except Exception as e:
+                self.error = f"Transcription failed; audio is saved: {e}"
+                self.notify_status()
+            finally:
+                self._chunk_done(session)
+
+    def _chunk_done(self, session):
+        if session is not None:
+            with session._lock:
+                session.pending -= 1
+                if session.pending == 0:
+                    session.drained.set()
+        self.chunks.task_done()
 
     # -- broadcasting (thread-safe) -----------------------------------------
     def broadcast(self, msg: dict):
         loop = self.loop
         if loop is None or loop.is_closed():
             return
-        with contextlib.suppress(RuntimeError):  # loop may close mid-call
-            asyncio.run_coroutine_threadsafe(self._send_all(json.dumps(msg)), loop)
+        payload = json.dumps(msg)
+        def send():
+            loop.create_task(self._send_all(payload))
+        try:
+            loop.call_soon_threadsafe(send)
+        except RuntimeError:
+            pass
 
     async def _send_all(self, payload: str):
         dead = [ws for ws in self.clients]
@@ -396,6 +468,12 @@ class Hub:
             "live_engine": ("groq" if self.live_engine == "groq" and groq_api_key()
                             else "local"),
             "auto_polish": self.auto_polish,
+            "capture_busy": self.capture_owner is not None,
+            "omi_active": bool(omi_link and omi_link.task and not omi_link.task.done()),
+            "omi_connected": bool(omi_link and omi_link.connected),
+            "omi_recording": bool(omi_link and omi_link.recording),
+            "memory_available": memstore is not None,
+            "error": self.error,
         }
 
     def notify_status(self):
@@ -408,17 +486,55 @@ class OmiLink:
     def __init__(self, hub: Hub):
         self.hub = hub
         self.task: asyncio.Task | None = None
+        self.connected = False
+        self.recording = False
+        self.recording_generation = 0
 
     def start(self, address: str | None):
         if self.task and not self.task.done():
             return
-        self.task = asyncio.create_task(self._run(address))
+        self.task = asyncio.create_task(self._reconnect(address))
+        self.task.add_done_callback(lambda task: self.hub.notify_status())
+
+    def start_recording(self):
+        if not self.connected:
+            raise HTTPException(409, "Connect Omi before recording.")
+        if self.recording:
+            return
+        self.hub.claim_capture(self, "omi")
+        self.recording_generation += 1
+        self.recording = True
+        self.hub.notify_status()
+
+    def stop_recording(self):
+        self.recording = False
+        self.hub.release_capture(self)
+        self.hub.notify_status()
+
+    async def _reconnect(self, address):
+        try:
+            for attempt in range(6):
+                await self._run(address)
+                if getattr(self, "fatal", False):
+                    break
+                if attempt == 5:
+                    self.hub.omi_status = "connection lost — press Connect Omi to retry"
+                    break
+                delay = min(2 ** attempt, 15)
+                self.hub.omi_status = f"reconnecting in {delay}s... (audio gap)"
+                self.hub.notify_status()
+                await asyncio.sleep(delay)
+                address = getattr(self, "address", address)
+        finally:
+            self.hub.release_capture(self)
 
     async def stop(self):
         if self.task and not self.task.done():
             self.task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self.task
+        self.connected = False
+        self.stop_recording()
         self.hub.omi_status = "disconnected"
         self.hub.notify_status()
 
@@ -426,6 +542,7 @@ class OmiLink:
         from bleak import BleakClient, BleakScanner
 
         hub = self.hub
+        self.fatal = False
         try:
             if not address:
                 hub.omi_status = "scanning..."
@@ -437,15 +554,15 @@ class OmiLink:
                         break
                 if not address:
                     hub.omi_status = "not found (is it connected to the phone app?)"
+                    self.fatal = True
                     hub.notify_status()
                     return
 
             hub.omi_status = f"connecting to {address}..."
             hub.notify_status()
             async with BleakClient(address, timeout=30.0) as client:
-                codec_id = 20
-                with contextlib.suppress(Exception):
-                    codec_id = (await client.read_gatt_char(CODEC_TYPE_UUID))[0]
+                self.address = address
+                codec_id = (await client.read_gatt_char(CODEC_TYPE_UUID))[0]
                 if codec_id in (20, 21):
                     decoder = OpusStreamDecoder()
                 elif codec_id == 0:
@@ -454,17 +571,25 @@ class OmiLink:
                     decoder = PcmStreamDecoder(8000)
                 else:
                     hub.omi_status = f"unsupported codec {codec_id}"
+                    self.fatal = True
                     hub.notify_status()
                     return
 
                 hub.omi_status = f"connected ({CODEC_NAMES.get(codec_id, codec_id)})"
-                hub.source = "omi"
-                hub.start_session()
+                self.connected = True
                 hub.notify_status()
 
+                generation = -1
                 def on_audio(_c, data: bytearray):
+                    nonlocal decoder, generation
+                    if not self.recording or hub.capture_owner is not self:
+                        return
+                    if generation != self.recording_generation:
+                        decoder = (OpusStreamDecoder() if codec_id in (20, 21)
+                                   else PcmStreamDecoder(8000 if codec_id == 1 else 16000))
+                        generation = self.recording_generation
                     pcm = decoder.feed(bytes(data))
-                    if pcm is not None and len(pcm):
+                    if self.recording and hub.capture_owner is self and pcm is not None and len(pcm):
                         hub.feed_audio(pcm)
 
                 await client.start_notify(AUDIO_DATA_UUID, on_audio)
@@ -474,11 +599,13 @@ class OmiLink:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            hub.omi_status = f"error: {e}"
+            detail = str(e.args[0]) if e.args else str(e)
+            hub.omi_status = f"error: {detail}"
+            if "powered" in str(e).lower() or "bluetooth" in str(e).lower() and "available" in str(e).lower():
+                self.fatal = True
         finally:
-            if hub.source == "omi":
-                hub.source = "none"
-                hub.end_session()
+            self.connected = False
+            self.stop_recording()
             hub.notify_status()
 
 
@@ -642,8 +769,7 @@ class Polisher:
               engine: str):
         self.jobs[name] = {"status": "running", "progress": 0.0, "engine": engine}
         self._notify(name)
-        threading.Thread(target=self._run, daemon=True,
-                         args=(name, wav_path, out_path, engine)).start()
+        self.hub.run_background(self._run, name, wav_path, out_path, engine)
 
     def _notify(self, name: str):
         self.hub.broadcast({"type": "polish", "session": name, **self.jobs[name]})
@@ -694,6 +820,23 @@ POLISHED_LINE = re.compile(r"^\[(\d+):(\d{2})\]\s*(?:(Speaker \d+):\s*)?(.+)$")
 
 def live_transcript_segments(name: str) -> list[dict]:
     """Best segments available without polish: the live transcript."""
+    # New captures preserve audio offsets in JSONL. A truncated final line after
+    # a crash must not discard previously completed transcript entries.
+    structured = SESSIONS / f"{name}.jsonl"
+    segments = []
+    if structured.exists():
+        for line in structured.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+                start = entry.get('start')
+                if (isinstance(start, (int, float)) and not isinstance(start, bool)
+                        and np.isfinite(start) and start >= 0 and entry.get('text')):
+                    segments.append({'start': float(start), 'speaker': entry.get('speaker', ''),
+                                     'text': entry['text']})
+            except (ValueError, TypeError, AttributeError):
+                continue
+    if segments:
+        return segments
     txt = SESSIONS / f"{name}.txt"
     try:
         text = txt.read_text(encoding="utf-8")
@@ -745,8 +888,11 @@ def recover_unindexed_sessions():
         repair_wav(SESSIONS / f"{name}.wav")
         polished = SESSIONS / f"{name}.polished.txt"
         source = polished if polished.exists() else txt
-        segs = parse_polished_text(source.read_text(encoding="utf-8")) \
-            or live_transcript_segments(name)
+        try:
+            segs = (parse_polished_text(polished.read_text(encoding="utf-8"))
+                    if polished.exists() else []) or live_transcript_segments(name)
+        except FileNotFoundError:
+            continue  # deleted by the user while recovery was scanning
         if not segs:
             continue
         try:
@@ -805,7 +951,7 @@ def index_and_enrich(name: str, segments: list[dict]):
 @app.on_event("startup")
 async def _startup():
     hub.loop = asyncio.get_running_loop()
-    threading.Thread(target=recover_unindexed_sessions, daemon=True).start()
+    hub.run_background(recover_unindexed_sessions)
 
 
 # -- pages & status -----------------------------------------------------------
@@ -1219,10 +1365,8 @@ async def memory_reindex(name: str):
     if not source.exists():
         raise HTTPException(404, "no transcript for this session")
     segs = parse_polished_text(source.read_text(encoding="utf-8"))
-    if not segs:  # live txt uses [HH:MM:SS] stamps; strip and index flat
-        text = source.read_text(encoding="utf-8")
-        segs = [{"start": 0, "speaker": "", "text": re.sub(r"^\[[\d:]+\]\s*", "", ln)}
-                for ln in text.splitlines() if ln.strip()]
+    if not segs:
+        segs = live_transcript_segments(name)
     if not segs:
         raise HTTPException(400, "transcript is empty")
     await asyncio.to_thread(index_and_enrich, name, segs)
@@ -1232,6 +1376,18 @@ async def memory_reindex(name: str):
 @app.post("/omi/connect")
 async def omi_connect(address: str | None = None):
     omi_link.start(address)
+    return {"ok": True}
+
+
+@app.post("/omi/record/start")
+async def omi_record_start():
+    omi_link.start_recording()
+    return {"ok": True}
+
+
+@app.post("/omi/record/stop")
+async def omi_record_stop():
+    omi_link.stop_recording()
     return {"ok": True}
 
 
@@ -1267,22 +1423,26 @@ async def ws_audio(ws: WebSocket):
     if not ws_authorized(ws):
         await ws.close(code=4401)
         return
-    await ws.accept()
-    hub.source = "mic"
-    hub.start_session()
-    hub.notify_status()
     try:
+        hub.claim_capture(ws, "mic")
+    except HTTPException:
+        await ws.close(code=4409, reason="Another recording is active")
+        return
+    try:
+        await ws.accept()
+        hub.start_session()
+        hub.notify_status()
         while True:
             data = await ws.receive_bytes()
+            if len(data) % 2 or len(data) > SAMPLE_RATE * 2 * 30:
+                await ws.close(code=1003, reason="Expected PCM16 audio chunks of at most 30 seconds")
+                break
             pcm = np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0
             hub.feed_audio(pcm)
     except WebSocketDisconnect:
         pass
     finally:
-        if hub.source == "mic":
-            hub.source = "none"
-            hub.end_session()
-            hub.notify_status()
+        hub.release_capture(ws)
 
 
 def main():
