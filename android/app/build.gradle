@@ -12,8 +12,8 @@ android {
         minSdk 26
         targetSdk 36
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        versionCode 2
-        versionName "0.2-omi-preview"
+        versionCode 3
+        versionName "0.3-transcription-preview"
     }
 
     buildTypes {

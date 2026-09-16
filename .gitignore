@@ -29,3 +29,8 @@ pytest-cache-files-*/
 
 android/build/
 android/.kotlin/
+mobile/
+mobile-token.txt
+mobile-pairing.json
+mobile-pairing.tmp
+certs-mobile/

@@ -19,5 +19,6 @@ jobs:
           node-version: '22'
       - run: pip install -r requirements.txt pytest
       - run: python -m pytest tests/test_capture_to_citation.py tests/test_capture_reliability.py tests/test_chunker.py tests/test_opus.py tests/test_enrich_ask.py tests/test_recovery.py tests/test_memory.py tests/test_api.py tests/test_security.py tests/test_scoped_ask.py tests/test_improvements.py tests/test_polish.py tests/test_sessions_qol.py tests/test_provider_chain.py tests/test_groq.py tests/test_summary.py tests/test_pins.py tests/test_sync.py -m "not e2e" -q
+      - run: python -m pytest tests/test_mobile_ingest.py -m "not e2e" -q
       - run: node tests/test_browser_audio.cjs
       - run: node tests/test_capture_controls.cjs

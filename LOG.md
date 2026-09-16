@@ -8,10 +8,14 @@ any working session. Newest entries at the top.
 - State: active
 - Live URL: none public; runs locally, Railway config exists
 - Stranger test: isolated capture-to-citation journey passes with real local models; user screenshots confirm Omi connection and speech capture; native Android stop/save/playback and short unplugged walking capture confirmed by user
-- Currently working on: native Android capture milestone (PR #4); next phase is authenticated recording transfer and transcription
+- Currently working on: checkpointing verified Android transcription; summaries and action items are next
 - Blocked on investor: nothing for local development; credential review remains a prerequisite before public distribution
 
 ## Session notes
+
+- 2026-09-16: User confirmed laptop pairing, phone upload, visible transcript and accurate text from their Omi recording. Preparing reviewed PR for the transcription milestone. Self-review fixed a cleanup-error path that could retain the upload lock and a completion/status-read race; both have regression tests. Android build/unit/lint and 23 Python checks including cached real-model transcription passed; the added deterministic status-race test also passed in the final 10-test fast upload suite. Original audio and private pairing files remain excluded from Git. Summaries/action items, memory indexing and background uploads remain follow-up work.
+
+- 2026-09-16: Added explicit Android Transcribe/Read transcript flow, HTTPS certificate-and-token pairing, checksum-idempotent WAV upload, durable local transcription results and restart/retry handling. Dedicated laptop service runs on port 8091 without interrupting desktop capture; no real audio was uploaded. Android build, six JVM tests and lint passed; 22 Python tests passed including cached local Whisper on synthetic 48 kHz speech. Authenticated HTTPS connection returned 200 and missing token 401. Phone installation/pairing and Wi-Fi acceptance pending. Imports are not yet indexed/enriched, and uploads require the app to remain open; local originals are preserved.
 
 - 2026-09-16: User confirmed clear native Omi recording and playback on Galaxy Z Flip7, recording with the screen locked nearby, and full clear playback after walking with the phone unplugged from USB. Walking away without the phone caused a disconnect; this is not evidence of a phone-carried failure. Android PR #4 records this milestone with build/unit/lint CI. Local app/test APK builds, six JVM tests, lint and repository checks passed; self-review found no blocking preview issue. Fixed CI setup to avoid the retired SDK tools package. Automatic reconnect, long-duration reliability, upload and transcription remain follow-up work.
 
