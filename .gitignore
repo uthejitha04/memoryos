@@ -26,3 +26,6 @@ pairing_token.txt
 # Private runtime output
 *.log
 pytest-cache-files-*/
+
+android/build/
+android/.kotlin/

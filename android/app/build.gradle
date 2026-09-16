@@ -5,14 +5,15 @@ plugins {
 
 android {
     namespace 'com.memoryos.app'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.memoryos.app"
         minSdk 26
-        targetSdk 34
-        versionCode 1
-        versionName "0.1"
+        targetSdk 36
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        versionCode 2
+        versionName "0.2-omi-preview"
     }
 
     buildTypes {
@@ -32,4 +33,7 @@ android {
 dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }

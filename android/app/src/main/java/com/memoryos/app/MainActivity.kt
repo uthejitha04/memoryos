@@ -86,6 +86,11 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= 33) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) {
+                if (::web.isInitialized && web.canGoBack()) web.goBack() else finish()
+            }
+        }
         ensurePermissions()
         val token = prefs.getString("token", "").orEmpty()
         if (token.isEmpty()) promptToken() else buildUi(token)
@@ -137,6 +142,8 @@ class MainActivity : Activity() {
         if (ask.isNotEmpty()) ActivityCompat.requestPermissions(this, ask.toTypedArray(), 1)
     }
 
+    @android.annotation.SuppressLint("GestureBackNavigation")
+    @Deprecated("Compatibility for Android 12 and earlier; Android 13+ uses registered callback")
     override fun onBackPressed() {
         if (::web.isInitialized && web.canGoBack()) web.goBack() else super.onBackPressed()
     }
