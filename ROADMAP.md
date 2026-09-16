@@ -1,5 +1,14 @@
 # ROADMAP — MemoryOS
 
+## Native Android next steps — 2026-09-16
+
+- [x] Direct Omi BLE capture, separate start/stop, private WAV storage and playback.
+- [x] User verified clear playback, nearby locked-screen recording, and an unplugged walk carrying the phone.
+- [ ] Authenticated, retryable recording transfer that preserves the phone's local copy.
+- [ ] Backend WAV ingestion and transcription with explicit processing status in the app.
+- [ ] Display transcripts and organized memories on the phone.
+- [ ] Automatic reconnect, interruption recovery, background audio processing and longer battery/storage tests before daily reliance.
+
 ## Phase 1 — Memory engine (M1–M5) ✅ 2026-07-04
 
 - [x] **M1** Memory store: SQLite (recordings/chunks/entities), local MiniLM

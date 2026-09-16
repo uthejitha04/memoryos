@@ -186,3 +186,7 @@ no server:
 Omi is the primary source. Computer/phone microphone controls are under **Use a computer or phone microphone instead**; only one source can record at a time. Live transcripts arrive after roughly 6–20 seconds of audio plus processing time. Captions distinguish audio duration from processing time, which excludes queue wait.
 
 After updating this version, restart the Python server and refresh the page: the separate recording controls require the new backend endpoints.
+
+### Native Android Omi preview
+
+The Android launcher now connects directly to an Omi pendant and saves PCM/Opus audio as private WAV files, with separate connection and recording controls and local playback. See [Android setup and limits](android/README.md). This preview does not upload or transcribe phone recordings yet; the desktop backend remains separate. On 2026-09-16 the user confirmed clear recording/playback, recording with the screen locked nearby, and a short walk carrying the phone without USB. Long-duration reliability and reconnection remain to verify.

@@ -7,11 +7,15 @@ any working session. Newest entries at the top.
 
 - State: active
 - Live URL: none public; runs locally, Railway config exists
-- Stranger test: isolated capture-to-citation journey passes with real local models; user screenshots confirm Omi connection and speech capture; stop/save/playback walkthrough pending
-- Currently working on: web redesign ready for user review; native Android Omi capture remains next
+- Stranger test: isolated capture-to-citation journey passes with real local models; user screenshots confirm Omi connection and speech capture; native Android stop/save/playback and short unplugged walking capture confirmed by user
+- Currently working on: native Android capture milestone (PR #4); next phase is authenticated recording transfer and transcription
 - Blocked on investor: nothing for local development; credential review remains a prerequisite before public distribution
 
 ## Session notes
+
+- 2026-09-16: User confirmed clear native Omi recording and playback on Galaxy Z Flip7, recording with the screen locked nearby, and full clear playback after walking with the phone unplugged from USB. Walking away without the phone caused a disconnect; this is not evidence of a phone-carried failure. Android PR #4 records this milestone with build/unit/lint CI. Local app/test APK builds, six JVM tests, lint and repository checks passed; self-review found no blocking preview issue. Fixed CI setup to avoid the retired SDK tools package. Automatic reconnect, long-duration reliability, upload and transcription remain follow-up work.
+
+- 2026-09-16: Built native Android Omi preview for Galaxy Z Flip7 / Android 16. Added BLE scanning, connected-device foreground service, independent start/stop, PCM/Opus decoding, private checkpointed WAV storage, notification stop, recording wake lock and two-hour cap, and local playback. Updated AGP/Gradle for API36 and added checked-in checksum-pinned wrapper. Six JVM tests pass; debug APK build and lint pass (warnings remain). Synthetic BLE/Opus instrumentation test passed on the Galaxy Z Flip7 (Android 16); preview APK installed and launcher opened successfully. Independent review caught a 20-recording UI cap, removed before install. No live voice capture initiated. No upload/transcription integration yet; long-duration and physical BLE acceptance remain pending.
 
 - 2026-09-15: Reproduced the pstack review finding with a deterministic browser test: an old failed Start cancelled a newer recording. Scoped callbacks to their socket and added explicit pending-start cancellation; removed broad click-handler cleanup. Regression now passes, alongside existing browser audio/control checks. No real device or recording data touched. Existing overlapping Bluetooth Connect and cross-session transcription-context risks remain separate follow-up work.
 
