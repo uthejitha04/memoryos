@@ -25,6 +25,9 @@ any working session. Newest entries at the top.
 
 - 2026-09-15: Started MemoryOS verification while preserving all pending work and private data. Found live-only citations were indexed at 0:00; now queue entries and JSONL carry captured audio offsets, and recovery/reindex preserve them. Added a disposable WebSocket capture -> WAV/transcript -> memory -> Ask journey covering leading silence, database reopen, orphan recovery and manual reindex, plus truncated-JSONL recovery. 71 selected fast tests, one real cached Whisper/MiniLM journey and the browser audio-helper checks passed with cloud keys/sync disabled and model downloads blocked. No physical pendant/microphone capture, deployment or GitHub changes. Old recordings lacking offsets still fall back to the beginning; new citations seek to the retrieved chunk start, not individual-word timing.
 
+
+- 2026-09-10: Prepared a draft PR from an isolated working tree. Handoff and staged-diff checks pass. Based on the latest upstream master, preserving its newer Render configuration. Unrelated local audio/retrieval repairs are excluded. Existing history may still contain the old token; runtime acceptance was not rerun.
+
 - 2026-09-10: Removed pairing_token.txt from Git tracking and added its ignore rule; local bytes were preserved. Historical exposure and possible credential rotation still need review before sharing. No recordings or application data were modified.
 
 

@@ -57,3 +57,7 @@ node tests/test_browser_audio.cjs
 The real-model journey passed on 2026-09-15, alongside 71 selected fast regressions. This is a software integration check using synthetic speech, not proof of physical Omi Bluetooth or browser microphone behavior. SQLite reopening is covered; an actual process-crash/relaunch walkthrough is still pending. Tests use no synthesized cloud answers; Ask returns cited excerpts in retrieval mode.
 
 New live JSONL entries contain a `start` offset derived from saved audio samples. Citations point to the start of a retrieved chunk. Legacy recordings without audio offsets retain the older beginning-of-recording fallback until polished; no personal sessions were automatically reindexed or rewritten.
+
+## Historical handoff PR scope note
+
+The earlier handoff PR contained the repository setup and any explicitly listed consolidation changes. Other local feature work was excluded. LOG.md preserves local historical observations; those observations do not establish that this PR includes or verifies every feature mentioned there. Consult the PR description for its exact scope.
