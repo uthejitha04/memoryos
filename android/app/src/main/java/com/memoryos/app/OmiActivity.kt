@@ -224,6 +224,35 @@ class OmiActivity : Activity() {
                 if (!OmiService.recording) PhoneTranscription.transcribe(this, file)
             }.apply { isEnabled = !OmiService.recording && !PhoneTranscription.busy })
             if (File(filesDir, "transcripts/${file.name}.txt").exists()) {
+                library.addView(button("Create summary") {
+                    PhoneTranscription.summarySettings(this) { settings ->
+                        if (!isFinishing && !isDestroyed) {
+                            val where = if (settings.getBoolean("cloud"))
+                                "Send this transcript (not the audio) to ${settings.getString("provider")} to generate a summary and suggested action items?"
+                                else "Generate a summary and suggested action items on your laptop?"
+                            AlertDialog.Builder(this).setTitle("Create summary").setMessage(where)
+                                .setNegativeButton("Cancel", null)
+                                .setPositiveButton("Create") { _, _ -> PhoneTranscription.summarize(this, file, settings) }.show()
+                        }
+                    }
+                }.apply { isEnabled = !OmiService.recording && !PhoneTranscription.busy })
+                if (File(filesDir, "summaries/${file.name}.json").exists()) {
+                    library.addView(button("Read summary") {
+                        val result = PhoneTranscription.summary(this, file) ?: return@button
+                        val content = StringBuilder("AI draft · check against your transcript\n\n")
+                            .append(result.getString("summary")).append("\n\nSuggested action items\n")
+                        val actions = result.getJSONArray("actions")
+                        if (actions.length() == 0) content.append("No explicit action items found.")
+                        for (i in 0 until actions.length()) {
+                            val action = actions.getJSONObject(i)
+                            content.append("\n• ").append(action.getString("task"))
+                                .append("\nFrom transcript: “").append(action.getString("quote")).append("”\n")
+                        }
+                        AlertDialog.Builder(this).setTitle("Summary & actions")
+                            .setView(ScrollView(this).apply { addView(text(content.toString()).apply { setPadding(dp(20), dp(12), dp(20), dp(12)); setTextIsSelectable(true) }) })
+                            .setPositiveButton("Close", null).show()
+                    })
+                }
                 library.addView(button("Read transcript") {
                     val content = PhoneTranscription.transcript(this, file).orEmpty().ifBlank { "No speech was detected in this recording." }
                     AlertDialog.Builder(this).setTitle("Transcript")

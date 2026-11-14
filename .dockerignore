@@ -1,0 +1,16 @@
+# Only application source belongs in the image. Git ignore rules do not filter
+# Docker's build context; recordings, pairing secrets and databases stay out.
+**
+!Dockerfile
+!requirements.txt
+!server.py
+!memory.py
+!enrich.py
+!speakers.py
+!certs.py
+!omi_transcribe.py
+!mobile_ingest.py
+!mobile_library.py
+!mobile_summary.py
+!static/
+!static/**

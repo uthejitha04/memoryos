@@ -2,6 +2,27 @@
 
 Version 0.3 · 2026-07-04 · Single source of truth for system design.
 
+## Current direction — 2026-10-26
+
+The user's confirmed target is web first, Android next, then iOS, with Omi
+capture and access while the laptop is off. See the dated plan in
+[ROADMAP.md](ROADMAP.md). The target is one hosted private API and memory
+library, with native phone capture and durable uploads. This is not yet deployed.
+The code mounts `/mobile` in the main server as well as the dedicated LAN
+service. The main server now uses `mobile_library.py` to import completed phone
+transcripts into the shared memory database; the dedicated service remains
+separate. Durable `mobile/<sha256>.library.json` markers track pending/ready/
+failed/deleted imports. Session IDs include a date and the full source checksum;
+source WAV bytes and segment timestamps are preserved. Startup recovers marked
+imports without calling cloud AI. Library deletions leave a tombstone so retries
+cannot recreate the memory; original files in `mobile/` are retained. The bridge
+assumes one server process per data directory. First library submission time
+is used until the upload protocol carries the original capture time.
+The older React Native, unauthenticated LAN and all-local statements below are
+historical design notes, not confirmation of current implementation or the new
+hosted target. Current remote pairing checks exist; cloud proxy behavior still
+requires verification before deployment.
+
 ## Native Android preview — 2026-09-16
 
 The current Android launcher is native Kotlin, rather than the planned React Native client below. `OmiActivity` scans and controls `OmiService`, a connected-device foreground service. BLE notifications are assembled and decoded by `OmiAudio` into private WAV files; the activity plays completed recordings locally. Stop preserves the Bluetooth connection. Disconnect saves received audio and requires manual reconnection. The 0.3 preview adds PhoneTranscription: explicit HTTPS uploads, certificate-based trust, token authentication and local transcript caching. mobile_server.py runs the dedicated service; mobile_ingest.py validates/checksums WAVs, persists retryable job results, and runs cached local small Whisper. Imports remain outside the desktop memory database.

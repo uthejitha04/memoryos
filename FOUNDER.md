@@ -10,7 +10,7 @@ Act as the project's practical technical steward. Explain status in plain Englis
 
 ## Immediate focus
 
-Run the capture-to-citation flow with disposable recordings and verify restart, recovery and citation accuracy.
+Deliver the personal web app first, then Android and iOS, with Omi as the primary capture source and access independent of the laptop. First unify phone uploads with the searchable web memory library and verify retry, restart and timestamp citations using disposable recordings. See ROADMAP.md for the dated delivery plan.
 
 ## Boundaries
 

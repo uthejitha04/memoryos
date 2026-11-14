@@ -58,6 +58,25 @@ The real-model journey passed on 2026-09-15, alongside 71 selected fast regressi
 
 New live JSONL entries contain a `start` offset derived from saved audio samples. Citations point to the start of a retrieved chunk. Legacy recordings without audio offsets retain the older beginning-of-recording fallback until polished; no personal sessions were automatically reindexed or rewritten.
 
+## Shared phone library verification (2026-10-26)
+
+With the same isolated data/offline/cloud-key settings described above, run:
+
+```powershell
+.venv/Scripts/python -m pytest tests/test_mobile_library.py tests/test_mobile_ingest.py tests/test_mobile_summary.py tests/test_mobile_metadata.py -m 'not e2e' -q
+```
+
+Six new library tests cover a synthetic 48 kHz upload, original-byte playback
+and HTTP range support, timestamped search/scoped Ask, duplicate prevention,
+user-title preservation, failed indexing with successful transcription, retry,
+silence, authentication and deletion tombstones. A recovery test saves a pending
+job and opens the main API in two fresh Python processes against the same
+disposable database. Transcription and embeddings use deterministic fixtures;
+this is not a new real-model or physical-phone acceptance result. Seventy
+selected Python regressions and both Node browser suites passed in this session.
+On this Windows environment, the sandbox blocked asyncio's loopback socketpair;
+these tests required execution outside that sandbox with synthetic data.
+
 ## Historical handoff PR scope note
 
 The earlier handoff PR contained the repository setup and any explicitly listed consolidation changes. Other local feature work was excluded. LOG.md preserves local historical observations; those observations do not establish that this PR includes or verifies every feature mentioned there. Consult the PR description for its exact scope.

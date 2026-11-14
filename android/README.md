@@ -50,3 +50,16 @@ The TLS client trusts only the imported laptop certificate and still verifies it
 The separate backend preserves the desktop server. It stores WAVs and durable result JSON under `MEMORYOS_DATA/mobile`, with a single processing job at a time and a 700 MB/two-hour input limit. Only mono PCM16 WAV is accepted. Whisper reads the WAV sample rate, including Android's 48 kHz output. The phone retains its original audio and caches text privately. These imports are not yet indexed into the desktop memory database or summarized. No automatic upload or background upload service is implemented; a terminated app can retry safely.
 
 Validation: Android build, six JVM tests and lint passed. Eight synthetic upload/authentication/retry tests and existing API/security checks passed, plus an end-to-end synthetic speech test using the cached local model (22 Python tests total). The running HTTPS service passed authenticated and unauthenticated connection checks. The update was installed without uninstalling; the user confirmed pairing, upload and accurate transcript display on the phone.
+
+
+## Summary preview (0.4, not yet enabled on the running service)
+
+After transcription, **Create summary** checks the laptop's AI settings and asks for confirmation. **Read summary** displays a draft and suggested action items with exact supporting transcript quotes. Nothing is automatically marked complete or sent elsewhere. The app stores the result privately for offline reading.
+
+Summary generation defaults to disabled. Set `MEMORYOS_SUMMARY_PROVIDER` in the service environment to `ollama`, `gemini`, `groq` or `openrouter`, then restart the dedicated service when no jobs are active. For Ollama also set `MEMORYOS_SUMMARY_MODEL` to an installed local model and run Ollama locally; the adapter uses fixed loopback, disables ambient proxies and rejects cloud-labelled/remote models. No model is downloaded by this feature. The protocol follows https://docs.ollama.com/api/chat.
+
+Cloud mode requires the matching provider API key in the laptop process environment. Existing provider model constants are reused; there is no automatic fallback to other providers. The phone names the provider and asks before sending transcript text (never raw audio). Consent is bound to provider and model. Keys never enter the APK or pairing file. The dedicated service does not automatically load `.env`.
+
+The preview rejects empty transcripts or text over 24,000 characters rather than silently summarizing only a prefix. Results are persisted separately as `mobile/<recording-id>.summary.json`; transcripts are unchanged. Failed/interrupted jobs can retry; completed results are cached. Quotes establish that the evidence exists, not that the model interpreted it correctly: users must review drafts. No task execution, reminders or cross-recording indexing is included.
+
+Synthetic tests cover configuration/authentication, cloud consent, caching, retry/restart, empty/oversized transcripts and quote validation. Actual model output quality and physical summary-screen acceptance remain pending selection/configuration of an inference provider.

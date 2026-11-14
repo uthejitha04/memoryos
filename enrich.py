@@ -58,9 +58,46 @@ def openrouter_key() -> str | None:
 
 OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 
+NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+NVIDIA_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
+_THINK = re.compile(r"<think>.*?</think>", re.S)
+
+
+def nvidia_key() -> str | None:
+    return os.environ.get("NVIDIA_API_KEY") or None
+
+
+def nvidia_model() -> str:
+    return os.environ.get("NVIDIA_MODEL") or NVIDIA_MODEL
+
 
 def ai_available() -> bool:
-    return bool(gemini_key() or api_key() or openrouter_key())
+    return bool(nvidia_key() or gemini_key() or api_key() or openrouter_key())
+
+
+def _json_object(text: str) -> str:
+    """The outermost {...} in a reply, so code fences or a stray sentence
+    around the JSON don't break parsing."""
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end < start:
+        raise ValueError(f"no JSON object in reply: {text[:200]!r}")
+    return text[start:end + 1]
+
+
+def _nvidia_chat(content: str, key: str, json_mode: bool = False) -> str:
+    import httpx
+
+    r = httpx.post(NVIDIA_URL,
+                   headers={"Authorization": f"Bearer {key}"},
+                   json={"model": nvidia_model(),
+                         "messages": [{"role": "user", "content": content}],
+                         "temperature": 0.2, "max_tokens": 8192},
+                   timeout=180)
+    r.raise_for_status()
+    text = _THINK.sub("", r.json()["choices"][0]["message"]["content"] or "").strip()
+    if not text:
+        raise ValueError("empty reply")
+    return _json_object(text) if json_mode else text
 
 
 def _gemini_chat(content: str, key: str, json_mode: bool = False) -> str:
@@ -96,8 +133,14 @@ def _openrouter_chat(content: str, key: str, json_mode: bool = False) -> str:
 
 
 def llm_chat(content: str, json_mode: bool = False) -> str:
-    """Provider chain: Gemini → Groq → OpenRouter. Raises RuntimeError with
-    the collected errors if every configured provider fails."""
+    """Nemotron when NVIDIA_API_KEY is set, alone: a GROQ_API_KEY kept for
+    speech must not quietly answer with a different model. Otherwise the
+    chain Gemini → Groq → OpenRouter. Raises RuntimeError on failure."""
+    if nvidia_key():
+        try:
+            return _nvidia_chat(content, nvidia_key(), json_mode)
+        except Exception as e:
+            raise RuntimeError(f"nvidia ({nvidia_model()}): {e}") from e
     errors = []
     for name, key_fn, chat_fn in (("gemini", gemini_key, _gemini_chat),
                                   ("groq", api_key, _chat),
@@ -188,8 +231,8 @@ def ask_answer(question: str, hits: list[dict],
                           "memories yet.", "citations": [], "mode": "empty"}
 
     if not ai_available():
-        return {"answer": "Here's what I found in your memories (add a free "
-                          "Gemini or Groq API key for synthesized answers):",
+        return {"answer": "Here's what I found in your memories (add an "
+                          "NVIDIA API key for synthesized answers):",
                 "citations": citations, "mode": "retrieval"}
     try:
         excerpts = "\n".join(

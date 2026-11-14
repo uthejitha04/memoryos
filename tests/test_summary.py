@@ -17,7 +17,7 @@ def test_summarize_without_key_hints(stub_hub, monkeypatch):
     name = make_session(stub_hub)
     with TestClient(server.app) as c:
         r = c.post(f"/sessions/{name}/summarize")
-        assert r.status_code == 400 and "GROQ_API_KEY" in r.json()["detail"]
+        assert r.status_code == 400 and "NVIDIA_API_KEY" in r.json()["detail"]
 
 
 def test_summarize_with_mocked_llm(stub_hub, monkeypatch):

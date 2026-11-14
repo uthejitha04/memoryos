@@ -19,6 +19,43 @@ def no_env_keys(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    monkeypatch.delenv("NVIDIA_MODEL", raising=False)
+
+
+def test_nemotron_answers_alone_when_configured(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-k")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_k")  # kept for speech only
+    calls = []
+
+    def fake_post(url, headers=None, json=None, **kw):
+        calls.append((url, json))
+        assert headers["Authorization"] == "Bearer nvapi-k"
+        reply = '<think>plan</think>Sure:\n```json\n{"title": "x"}\n```'
+        return httpx.Response(200, json=groq_response(reply),
+                              request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    assert enrich.llm_chat("hello", json_mode=True) == '{"title": "x"}'
+    assert enrich.llm_chat("hello").startswith("Sure:")
+    assert all(url == enrich.NVIDIA_URL for url, _ in calls)
+    assert calls[0][1]["model"] == "nvidia/nemotron-3.5-lightning-30b-a3b"
+
+
+def test_nemotron_model_override_and_no_silent_fallback(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-k")
+    monkeypatch.setenv("NVIDIA_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_k")
+    calls = []
+
+    def fake_post(url, json=None, **kw):
+        calls.append((url, json["model"]))
+        return httpx.Response(429, json={}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    with pytest.raises(RuntimeError, match="nemotron-3-ultra"):
+        enrich.llm_chat("hello")
+    assert calls == [(enrich.NVIDIA_URL, "nvidia/nemotron-3-ultra-550b-a55b")]
 
 
 def test_gemini_is_primary(monkeypatch):

@@ -9,6 +9,33 @@ microphone too.
 Docs: [PRD.md](PRD.md) · [ARCHITECTURE.md](ARCHITECTURE.md) ·
 [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) · [ROADMAP.md](ROADMAP.md)
 
+## Phone uploads in the web library — 2026-10-26
+
+The main `server.py` API now imports completed `/mobile/recordings/{sha256}`
+uploads into Memories, Search and Ask. Original WAV bytes/sample rate and
+transcript segment offsets are preserved. Retrying the same upload reuses one
+memory. Imports use local embeddings and a simple transcript-derived title;
+they do not automatically call an AI provider or sync to another server.
+
+The upload response/status includes `library.status` (`pending`, `ready`,
+`failed`, `deleted` or `not_imported`) separately from transcription status.
+`POST /mobile/recordings/{sha256}/library` retries indexing a completed
+transcript without retranscription; it requires the same `x-memoryos-token`
+header as uploads. Pending imports recover when the main server restarts.
+Previously completed uploads can be imported explicitly with that endpoint;
+existing personal uploads are not automatically migrated.
+
+Imported dates represent first library submission in UTC, not the original
+phone capture time. Deleting a web memory removes its library copy and index
+and prevents retry/restart from bringing it back. **The uploaded source files
+under `mobile/` and the phone's local recording are retained** in this preview;
+this is not an erase-everywhere action. A retention/purge workflow is still needed.
+
+This bridge is implemented only in the main server. The existing dedicated
+`mobile_server.py` laptop service remains transcription/summary-only. Existing
+phone pairing is unchanged; main-server pairing and physical acceptance remain
+next steps. Deployment is not implied. Use one server process per data directory.
+
 ## The memory engine (Phase 1)
 
 Every recording is transcribed, polished, then automatically **indexed into
@@ -106,6 +133,14 @@ A self-signed certificate is generated into `./certs` (SANs include your LAN
 IPs). On the phone open `https://<laptop-ip>:8090`, accept the certificate
 warning once, and Record works from the phone's mic/headset. Without
 `--https`, phones can still watch transcripts read-only over plain HTTP.
+
+### AI and voice models (.env)
+
+Put keys in `.env` (git-ignored) and restart. `NVIDIA_API_KEY` makes Nemotron
+(`nvidia/nemotron-3.5-lightning-30b-a3b`, override with `NVIDIA_MODEL`) the only
+model for Ask, titles, enrichment and summaries. `GROQ_API_KEY` switches live
+transcription and polish to Groq `whisper-large-v3`, which auto-detects
+language per chunk. Both send data to those cloud providers.
 
 ### Optional: Groq free tier (cloud accuracy + summaries)
 

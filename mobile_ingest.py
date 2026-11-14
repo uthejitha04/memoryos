@@ -15,6 +15,11 @@ MAX_BYTES = 700_000_000
 MAX_SECONDS = 7201
 _busy = threading.Lock()
 _active = set()
+_summary_busy = threading.Lock()
+_summary_active = set()
+# Windows does not permit replacing a file while a status reader has it open.
+# Each service runs one process; serialize its metadata reads and writes.
+_metadata_lock = threading.RLock()
 
 
 def transcribe_local(path):
@@ -26,12 +31,18 @@ def transcribe_local(path):
 
 
 def save_json(path, value):
-    temp = path.with_suffix(".tmp")
-    with temp.open("w", encoding="utf-8") as f:
-        json.dump(value, f, ensure_ascii=False)
-        f.flush()
-        os.fsync(f.fileno())
-    temp.replace(path)
+    with _metadata_lock:
+        temp = path.with_suffix(".tmp")
+        with temp.open("w", encoding="utf-8") as f:
+            json.dump(value, f, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        temp.replace(path)
+
+
+def load_json(path):
+    with _metadata_lock:
+        return json.loads(path.read_text(encoding="utf-8"))
 
 
 def validate_wav(path):
@@ -51,7 +62,7 @@ def validate_wav(path):
         raise HTTPException(400, "Invalid or incomplete mono PCM16 WAV") from exc
 
 
-def make_router(data_dir, token_value):
+def make_router(data_dir, token_value, library=None):
     router = APIRouter(prefix="/mobile")
 
     def authorize(request):
@@ -76,26 +87,117 @@ def make_router(data_dir, token_value):
             raise HTTPException(404, "Recording not received yet")
         # Snapshot before reading: completion writes metadata before clearing active.
         active = str(wav) in _active
-        result = json.loads(meta.read_text(encoding="utf-8"))
+        result = load_json(meta)
         if result["status"] == "processing" and not active:
             return {"status": "interrupted", "detail": "Laptop restarted; tap Transcribe to retry"}
+        if library is not None:
+            result["library"] = library.status(recording_id)
         return result
 
     def process(wav, meta):
         try:
             segments = transcribe_local(wav)
-            save_json(meta, {"status": "complete", "segments": segments,
-                             "text": "\n".join(s["text"] for s in segments)})
+            result = {"status": "complete", "segments": segments,
+                      "text": "\n".join(s["text"] for s in segments)}
+            save_json(meta, result)
         except Exception:
             save_json(meta, {"status": "failed", "detail": "Local transcription failed. Check the cached small Whisper model, then retry."})
+        else:
+            if library is not None:
+                library.import_recording(wav, result)
         finally:
             _active.discard(str(wav))
             _busy.release()
+
+    @router.post("/recordings/{recording_id}/library")
+    async def retry_library(recording_id: str, request: Request):
+        authorize(request)
+        if library is None:
+            raise HTTPException(503, "Use the main MemoryOS server for the shared library")
+        wav, _ = paths(recording_id)
+        transcript = state(recording_id)
+        if transcript["status"] != "complete":
+            raise HTTPException(409, "Finish transcription first")
+        return await asyncio.to_thread(library.import_recording, wav, transcript)
 
     @router.get("/connection")
     async def connection(request: Request):
         authorize(request)
         return {"ok": True, "engine": "local-small", "max_bytes": MAX_BYTES}
+
+    @router.get("/summary-settings")
+    async def summary_settings(request: Request):
+        authorize(request)
+        from mobile_summary import settings
+        return settings()
+
+    def summary_path(recording_id):
+        wav, _ = paths(recording_id)
+        return wav.with_suffix(".summary.json")
+
+    def summary_state(recording_id):
+        path = summary_path(recording_id)
+        active = str(path) in _summary_active
+        if not path.exists():
+            return {"status": "not_started"}
+        value = load_json(path)
+        if value["status"] == "processing" and not active:
+            return {"status": "interrupted", "detail": "Laptop restarted; tap Create summary to retry"}
+        return value
+
+    def run_summary(path, transcript, config):
+        try:
+            from mobile_summary import generate
+            result = generate(transcript, config)
+            save_json(path, {"status": "complete", **result, "provider": config["provider"], "model": config["model"]})
+        except Exception:
+            save_json(path, {"status": "failed", "detail": "Summary could not be generated or verified. Check the selected AI setup and retry. Your transcript is unchanged."})
+        finally:
+            _summary_active.discard(str(path))
+            _summary_busy.release()
+
+    @router.get("/recordings/{recording_id}/summary")
+    async def get_summary(recording_id: str, request: Request):
+        authorize(request)
+        return summary_state(recording_id)
+
+    @router.post("/recordings/{recording_id}/summary", status_code=202)
+    async def create_summary(recording_id: str, request: Request):
+        authorize(request)
+        from mobile_summary import settings, MAX_TRANSCRIPT_CHARS
+        previous = summary_state(recording_id)
+        if previous["status"] in ("complete", "processing"):
+            return previous
+        transcript = state(recording_id)
+        if transcript["status"] != "complete":
+            raise HTTPException(409, "Finish transcription first")
+        text = transcript.get("text", "").strip()
+        if not text:
+            raise HTTPException(400, "There is no speech to summarize")
+        if len(text) > MAX_TRANSCRIPT_CHARS:
+            raise HTTPException(413, "Choose a shorter recording: summary preview limit is 24,000 characters")
+        config = settings()
+        if not config["ready"]:
+            raise HTTPException(503, "Configure a summary model on the laptop first")
+        # The app presents this provider before confirmation. A configuration change
+        # cannot silently send a transcript to a different provider.
+        if (request.headers.get("x-summary-provider") != config["provider"]
+                or request.headers.get("x-summary-model") != config["model"]):
+            raise HTTPException(409, "AI setup changed; review the provider and try again")
+        if config["cloud"] and request.headers.get("x-summary-cloud-consent") != "yes":
+            raise HTTPException(400, "Confirm sending this transcript to the selected AI provider")
+        if not _summary_busy.acquire(blocking=False):
+            raise HTTPException(409, "Another summary is running; retry shortly")
+        path = summary_path(recording_id)
+        try:
+            save_json(path, {"status": "processing"})
+            _summary_active.add(str(path))
+            threading.Thread(target=run_summary, args=(path, transcript, config), daemon=True).start()
+        except BaseException:
+            _summary_active.discard(str(path))
+            _summary_busy.release()
+            raise
+        return {"status": "processing"}
 
     @router.get("/recordings/{recording_id}")
     async def get_recording(recording_id: str, request: Request):
@@ -109,6 +211,9 @@ def make_router(data_dir, token_value):
         if meta.exists():
             previous = state(recording_id)
             if previous["status"] in ("complete", "processing"):
+                if library is not None and previous["status"] == "complete":
+                    await asyncio.to_thread(library.import_recording, wav, previous)
+                    return state(recording_id)
                 return previous
         if not _busy.acquire(blocking=False):
             raise HTTPException(409, "Laptop is processing another recording. Retry shortly.")
@@ -130,6 +235,8 @@ def make_router(data_dir, token_value):
                     raise HTTPException(400, "Recording checksum mismatch; retry upload")
                 await asyncio.to_thread(validate_wav, temp)
                 temp.replace(wav)
+            if library is not None:
+                library.queue(recording_id)
             save_json(meta, {"status": "processing"})
             _active.add(str(wav))
             thread = threading.Thread(target=process, args=(wav, meta), daemon=True)

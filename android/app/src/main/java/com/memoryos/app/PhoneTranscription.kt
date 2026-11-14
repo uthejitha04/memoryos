@@ -6,6 +6,7 @@ import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.security.KeyStore
@@ -71,6 +72,69 @@ object PhoneTranscription {
     fun transcript(context: Context, file: File): String? =
         File(context.filesDir, "transcripts/${file.name}.txt").takeIf { it.exists() }?.readText()
 
+    fun summary(context: Context, file: File): JSONObject? =
+        File(context.filesDir, "summaries/${file.name}.json").takeIf { it.exists() }?.let { JSONObject(it.readText()) }
+
+    private fun recordingId(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { stream ->
+            val buffer = ByteArray(65536)
+            while (true) { val count = stream.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+    }
+
+    @Synchronized fun summarySettings(context: Context, ready: (JSONObject) -> Unit) {
+        if (busy) return
+        val json = prefs(context).getString("pairing", null)
+        if (json == null) { status = "Pair your laptop first."; return }
+        busy = true; status = "Checking summary settings…"
+        worker.execute {
+            try {
+                val config = JSONObject(json)
+                val settings = response(client(config), request(config, "/mobile/summary-settings").build())
+                if (settings.getBoolean("ready")) {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { ready(settings) }
+                    status = "Review where your summary will be generated."
+                } else status = "A summary model still needs to be configured on your laptop."
+            } catch (_: Exception) { status = "Could not check summary settings. Check the laptop connection." }
+            finally { busy = false }
+        }
+    }
+
+    @Synchronized fun summarize(context: Context, file: File, settings: JSONObject) {
+        if (busy) return
+        val app = context.applicationContext
+        val json = prefs(app).getString("pairing", null) ?: return
+        busy = true; status = "Creating summary…"
+        worker.execute {
+            try {
+                val config = JSONObject(json)
+                val http = client(config)
+                val path = "/mobile/recordings/${recordingId(file)}/summary"
+                val post = request(config, path).post(ByteArray(0).toRequestBody())
+                    .header("x-summary-provider", settings.getString("provider"))
+                    .header("x-summary-model", settings.getString("model"))
+                    .header("x-summary-cloud-consent", if (settings.getBoolean("cloud")) "yes" else "no").build()
+                var result = response(http, post)
+                val deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(10)
+                while (result.getString("status") == "processing" && System.nanoTime() < deadline) {
+                    Thread.sleep(3000)
+                    result = response(http, request(config, path).build())
+                }
+                if (result.getString("status") == "complete") {
+                    val dir = File(app.filesDir, "summaries").apply { mkdirs() }
+                    val temp = File(dir, "${file.name}.tmp")
+                    temp.writeText(result.toString())
+                    check(temp.renameTo(File(dir, "${file.name}.json")))
+                    status = "Summary ready. Review it against the transcript."
+                } else status = result.optString("detail", "Still processing. Tap Create summary later to check again.")
+            } catch (_: Exception) {
+                status = "Could not create summary. Check AI setup and laptop connection, then retry. The transcript is unchanged."
+            } finally { busy = false }
+        }
+    }
+
     @Synchronized fun transcribe(context: Context, file: File) {
         if (busy) return
         val app = context.applicationContext
@@ -82,12 +146,7 @@ object PhoneTranscription {
             try {
                 val config = JSONObject(json)
                 val http = client(config)
-                val digest = MessageDigest.getInstance("SHA-256")
-                file.inputStream().use { stream ->
-                    val buffer = ByteArray(65536)
-                    while (true) { val count = stream.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
-                }
-                val id = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+                val id = recordingId(file)
                 val path = "/mobile/recordings/$id"
                 status = "Sending a copy to your laptop… Keep this app open."
                 var result = response(http, request(config, path).put(file.asRequestBody("audio/wav".toMediaType())).build())

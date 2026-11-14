@@ -1,5 +1,94 @@
 # ROADMAP — MemoryOS
 
+## Personal web, Android and iOS direction — 2026-10-26
+
+Confirmed by the user: personal use, web first, Android next, iOS after that;
+Omi is the primary recording source; access must work with the laptop off.
+This direction supersedes the older laptop-dependent delivery sequence below.
+
+### Product and architecture
+
+One private memory library, served by a hosted Python API. Keep the existing
+web client and native Kotlin Android recorder while establishing that shared
+library. Omi sends audio to the nearby phone over Bluetooth; the phone saves a
+local copy and eventually uploads over HTTPS. The backend transcribes, indexes
+and optionally summarizes it. Every client reads the same memories and cited
+answers. This is the target, not the current end-to-end implementation.
+
+Offline phone capture must survive network loss. Upload retries must not create
+duplicate memories. Offline reading needs an explicit local cache; the present
+web service worker caches only the app shell. Hosted processing means audio and
+transcripts leave the phone. External AI-provider processing is a separate,
+visible choice; the prior preference for cloud inference is recorded in LOG.md.
+
+### Milestones and acceptance gates
+
+1. **Prove the web workflow.** Exercise record -> stop -> saved audio/transcript
+   -> memory search -> Ask -> timestamp playback with disposable data. Check
+   phone-sized layouts, permission denial, disconnect, reload and actual server
+   restart. Clearly show processing, failure, retry and retrieval-only states.
+   Automated checks alone do not establish physical microphone acceptance.
+2. **Unify phone imports with web memories.** Backend bridge implemented on
+   2026-10-26: durable import markers, checksum-based stable IDs, original audio
+   and segment timestamps, separate import/transcription status, explicit retry
+   and recovery. Synthetic API tests verify one memory, cited retrieval and
+   audio range playback across retries and fresh processes. Phone pairing to
+   the main server, visible phone import status and physical acceptance remain.
+   Web deletion retains source uploads; add a clear retention/purge workflow.
+3. **Host a private web pilot.** Railway is the initial candidate because the
+   repo already has its deployment files. Use one application instance and a
+   persistent volume initially; configure `MEMORYOS_DATA`, model provisioning,
+   access control, backup and restore, and an agreed spending budget. Verify
+   proxy-aware authentication for HTTP and WebSocket routes; localhost bypass
+   and old token history need review. Existing Render configuration has no
+   persistent disk and is not an accepted durable deployment. Confirm data
+   survives redeploy and that the pilot works with the laptop powered off.
+4. **Connect the existing Android app.** Add hosted HTTPS pairing with platform
+   certificate validation, retaining explicit laptop-certificate pairing as an
+   option. Add durable upload scheduling, retries and visible sync state, plus
+   the shared library, Ask and summaries. Test on the user's Galaxy Z Flip7:
+   Wi-Fi/mobile-data transitions, offline capture, screen lock, interruptions,
+   reconnect and long recordings. Never uninstall to upgrade private recordings.
+5. **Add iOS.** Reuse the backend contract and UI design. Evaluate Capacitor for
+   shared library/Ask screens, keeping device capture in native modules; retain
+   Kotlin Android code until a replacement proves equivalent. Omi BLE and
+   background recording require an iOS implementation and physical-device tests.
+   Native iOS builds require access to a supported Mac/Xcode environment and
+   signing. A phone-browser pilot does not certify native capture reliability.
+
+### Immediate work and decisions
+
+- Next target: main-server phone pairing and a web/phone walkthrough of the new
+  shared library; then authenticated hosted pilot preparation. The synthetic
+  upload-to-memory/citation backend milestone now passes.
+- Preserve pending summary work on `feature/mobile-summaries`; provider setup
+  and real summary quality remain unverified.
+- Select hosting budget, expected recording hours/day and audio retention before
+  provisioning. Measure storage and inference costs; do not promise a free,
+  always-on service. Current uploads require cached local Whisper even if the
+  web live-transcription path has cloud providers.
+- Defer a framework rewrite, multi-user accounts and a new vector database.
+  Shared APIs and reliable persistence are the immediate cross-platform needs.
+
+### Candidates from the user's Notion tools collection
+
+Source: [Knowledge / opensource tools and repos](https://app.notion.com/p/3fa09c3a8f288065926cfa11c8334067).
+These are recommendations for evaluation, not installed dependencies.
+
+- [Cloudflare security-audit-skill](https://github.com/cloudflare/security-audit-skill):
+  useful before the hosted pilot for authentication, uploads and data access.
+- [Meetily](https://github.com/Zackriya-Solutions/meetily): a reference for local
+  transcription and meeting-summary UX; it is not the shared mobile backend.
+- [GSAP](https://github.com/greensock/GSAP): optional interface motion after the
+  recording and recall workflow is reliable. No animation library is required now.
+- The collection's launch, sales and video tools do not address the current
+  capture, storage or cross-device requirements.
+
+References checked on 2026-10-26: [Railway volumes](https://docs.railway.com/volumes),
+[Railway pricing](https://docs.railway.com/pricing/plans),
+[Capacitor](https://capacitorjs.com/docs),
+[Apple Xcode requirements](https://developer.apple.com/xcode/system-requirements).
+
 ## Native Android next steps — 2026-09-16
 
 - [x] Direct Omi BLE capture, separate start/stop, private WAV storage and playback.

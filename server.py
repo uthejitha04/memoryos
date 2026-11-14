@@ -50,7 +50,7 @@ DATA = pathlib.Path(os.environ.get("MEMORYOS_DATA", str(ROOT)))
 DATA.mkdir(parents=True, exist_ok=True)
 SESSIONS = DATA / "sessions"
 SESSIONS.mkdir(exist_ok=True)
-SESSION_NAME_RE = re.compile(r"^session_\d{8}_\d{6}$")
+SESSION_NAME_RE = re.compile(r"^session_\d{8}_\d{6}(?:_mobile_[0-9a-f]{64})?$")
 VOCAB_FILE = DATA / "vocab.txt"
 
 log = logging.getLogger("memoryos")
@@ -81,8 +81,8 @@ def load_env_file():
 
 
 def ai_available() -> bool:
-    return bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GROQ_API_KEY")
-                or os.environ.get("OPENROUTER_API_KEY"))
+    import enrich
+    return enrich.ai_available()
 
 
 # -- security: LAN pairing token + rate limiting (ARCHITECTURE.md §7) ---------
@@ -154,8 +154,11 @@ def chunk_to_wav_bytes(chunk: np.ndarray) -> bytes:
 app = FastAPI(title="MemoryOS")
 
 from mobile_ingest import make_router
+from mobile_library import MobileLibrary
 
-app.include_router(make_router(lambda: DATA, lambda: PAIRING_TOKEN))
+mobile_library = MobileLibrary(lambda: DATA, lambda: SESSIONS,
+                               lambda: memstore, lambda event: hub.broadcast(event))
+app.include_router(make_router(lambda: DATA, lambda: PAIRING_TOKEN, mobile_library))
 
 
 @app.get("/health")
@@ -884,7 +887,7 @@ def recover_unindexed_sessions():
         return
     for txt in sorted(SESSIONS.glob("session_*.txt")):
         name = txt.stem
-        if name.endswith(".polished") or not SESSION_NAME_RE.match(name):
+        if name.endswith(".polished") or "_mobile_" in name or not SESSION_NAME_RE.match(name):
             continue
         rec = memstore.recording(name)
         if rec and rec["enriched"]:
@@ -955,6 +958,7 @@ def index_and_enrich(name: str, segments: list[dict]):
 @app.on_event("startup")
 async def _startup():
     hub.loop = asyncio.get_running_loop()
+    hub.run_background(mobile_library.recover)
     hub.run_background(recover_unindexed_sessions)
 
 
@@ -1180,8 +1184,7 @@ async def session_summarize(name: str):
 
     paths = _session_paths(name)
     if not ai_available():
-        raise HTTPException(400, "no AI key set — add GEMINI_API_KEY or "
-                                 "GROQ_API_KEY (both have free tiers)")
+        raise HTTPException(400, "no AI key set — add NVIDIA_API_KEY to .env")
     source = paths["polished"] if paths["polished"].exists() else paths["txt"]
     transcript = source.read_text(encoding="utf-8").strip() if source.exists() else ""
     if not transcript:
@@ -1199,7 +1202,9 @@ async def session_summarize(name: str):
 async def delete_session(name: str):
     if hub.session and hub.session.name == name:
         raise HTTPException(409, "session is currently recording")
-    for p in _session_paths(name).values():
+    paths = _session_paths(name)
+    await asyncio.to_thread(mobile_library.mark_deleted, name)
+    for p in paths.values():
         # background enrichment may briefly hold the wav open (Windows locks
         # open files) — retry instead of failing the delete
         for attempt in range(5):
